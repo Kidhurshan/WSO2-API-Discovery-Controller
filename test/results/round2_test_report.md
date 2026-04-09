@@ -2,7 +2,7 @@
 
 Date: 2026-04-07
 ADC Version: 0.1.0 (dev)
-Environment: TechMart Azure (tm-lab-sado-01)
+Environment: TechMart Azure (lab-vm-01)
 
 ## Summary
 

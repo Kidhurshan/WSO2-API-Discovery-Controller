@@ -1,7 +1,7 @@
 # Round 3 Test Report — Phase 2: Managed API Sync
 
 **Date:** 2026-04-07
-**Environment:** TechMart Lab (tm-lab-sado-01)
+**Environment:** TechMart Lab (lab-vm-01)
 **ADC Version:** dev (Round 3 build)
 **APIM:** WSO2 API Manager 4.x
 
@@ -10,7 +10,7 @@
 ## 1. Deployment
 
 - Cross-compiled `GOOS=linux GOARCH=amd64`
-- Deployed to sado VM at `/usr/local/bin/adc`
+- Deployed to test VM at `/usr/local/bin/adc`
 - Config updated with `[managed]` section (basic auth, context_pass_through=false)
 - ADC started successfully, both Phase 1 (discovery) and Phase 2 (managed) running
 

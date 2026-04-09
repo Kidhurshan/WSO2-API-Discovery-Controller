@@ -1,7 +1,7 @@
 # Round 7 Test Report — Hardening
 
 **Date:** 2026-04-07
-**Environment:** TechMart Lab (tm-lab-sado-01)
+**Environment:** TechMart Lab (lab-vm-01)
 **ADC Version:** dev (Round 7 build)
 
 ---
@@ -9,7 +9,7 @@
 ## 1. Deployment
 
 - Cross-compiled `GOOS=linux GOARCH=amd64`
-- Deployed to sado VM at `/usr/local/bin/adc`
+- Deployed to test VM at `/usr/local/bin/adc`
 - No new migrations required
 - All five phases + circuit breakers + health server + cleanup running
 
@@ -112,6 +112,6 @@ Zero rows purged (expected — no data exceeds retention thresholds yet).
 ## 5. Notes
 
 - Circuit breakers are initialized but not triggered in testing (all external dependencies available). They protect against DeepFlow/APIM outages in production.
-- Health port defaults to 8090 if not configured (no `health_port` in sado config — default used).
+- Health port defaults to 8090 if not configured (no `health_port` in test config — default used).
 - Cleanup retention periods configurable via `[server.retention]` section (defaults: 30d discovered, 90d managed/unmanaged).
 - Systemd service includes security hardening: NoNewPrivileges, ProtectSystem=strict, ProtectHome, PrivateTmp.

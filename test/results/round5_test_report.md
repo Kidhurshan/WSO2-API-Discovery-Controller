@@ -1,7 +1,7 @@
 # Round 5 Test Report — Phase 4: OpenAPI Spec Generation
 
 **Date:** 2026-04-07
-**Environment:** TechMart Lab (tm-lab-sado-01)
+**Environment:** TechMart Lab (lab-vm-01)
 **ADC Version:** dev (Round 5 build)
 
 ---
@@ -9,7 +9,7 @@
 ## 1. Deployment
 
 - Cross-compiled `GOOS=linux GOARCH=amd64`
-- Deployed to sado VM at `/usr/local/bin/adc`
+- Deployed to test VM at `/usr/local/bin/adc`
 - No new migrations required (Phase 4 uses existing tables)
 - All four phases running: discovery, managed, comparison, specgen
 

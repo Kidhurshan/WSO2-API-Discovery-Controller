@@ -1,7 +1,7 @@
 # Round 6 Test Report — Phase 5: Service Catalog Push
 
 **Date:** 2026-04-07
-**Environment:** TechMart Lab (tm-lab-sado-01)
+**Environment:** TechMart Lab (lab-vm-01)
 **ADC Version:** dev (Round 6 build)
 
 ---
@@ -9,7 +9,7 @@
 ## 1. Deployment
 
 - Cross-compiled `GOOS=linux GOARCH=amd64`
-- Deployed to sado VM at `/usr/local/bin/adc`
+- Deployed to test VM at `/usr/local/bin/adc`
 - No new migrations required (catalog columns already exist)
 - All five phases running: discovery, managed, comparison, specgen, catalog
 
