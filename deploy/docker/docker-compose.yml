@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  adc:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    depends_on:
+      - postgres
+    volumes:
+      - ./config.toml:/etc/adc/config.toml:ro
+    ports:
+      - "8090:8090"
+    restart: always
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: adc
+      POSTGRES_USER: adc_user
+      POSTGRES_PASSWORD: adc_password
+    volumes:
+      - adc-pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  adc-pgdata:

@@ -1,0 +1,505 @@
+# ============================================================================
+#  WSO2 API Discovery Controller (ADC) — Configuration Template
+# ============================================================================
+#
+#  Copy this file to /etc/adc/config.toml and edit to match your environment.
+#
+#  Usage:
+#    adc --config /etc/adc/config.toml
+#    adc --validate --config /etc/adc/config.toml   (dry-run config check)
+#
+#  Durations use Go format: "5m" (minutes), "30s" (seconds), "1h" (hours),
+#  "7d" (days — ADC extension, not standard Go).
+#
+#  Sections:
+#    [server]              — Runtime settings, logging, data retention
+#    [discovery]           — Phase 1: DeepFlow traffic discovery
+#    [managed]             — Phase 2: WSO2 APIM managed API sync
+#    [comparison]          — Phase 3: Unmanaged API detection
+#    [spec_generation]     — Phase 4: OpenAPI spec generation
+#    [service_catalog]     — Phase 5: APIM Service Catalog push
+#    [catalog.datastore]   — PostgreSQL connection (REQUIRED)
+#
+#  Phases can be enabled/disabled independently:
+#    - Discovery:      set [discovery.source].type = "deepflow" to enable
+#    - Managed sync:   set [managed.source].type = "wso2_apim" to enable
+#    - Comparison:     set [comparison].enabled = true (requires managed)
+#    - Spec gen:       set [spec_generation].enabled = true
+#    - Catalog push:   set [service_catalog].enabled = true (requires managed)
+#
+#  Minimum viable config: just [catalog.datastore] — all phases disabled.
+# ============================================================================
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  SERVER — Runtime settings, logging, data retention
+# ──────────────────────────────────────────────────────────────────────────────
+
+[server]
+
+# Optional. Identifier for this ADC instance in logs.
+# Default: OS hostname
+hostname = ""
+
+# REQUIRED. Deployment mode.
+# Options: "standalone" (VM/bare-metal), "kubernetes" (enables leader election)
+# Default: "standalone"
+mode = "standalone"
+
+# Optional. Port for /healthz and /readyz endpoints.
+# Default: 8090
+health_port = 8090
+
+# Optional. Minimum log level.
+# Options: "debug", "info", "warn", "error"
+# Default: "info"
+log_level = "info"
+
+# Optional. Log output format.
+# Options: "json" (structured, recommended for production), "text" (human-readable)
+# Default: "json"
+log_format = "json"
+
+# Optional. Log output destination.
+# Options: "stdout", or a file path like "/var/log/adc/adc.log"
+# When set to a file path, log rotation is handled by lumberjack.
+# Default: "stdout"
+log_output = "stdout"
+
+# Optional. Maximum size of a single log file in megabytes before rotation.
+# Only applies when log_output is a file path.
+# Default: 50
+log_max_size_mb = 50
+
+# Optional. Number of rotated log files to keep.
+# Default: 3
+log_max_backups = 3
+
+# Optional. Maximum age of rotated log files in days.
+# Default: 7
+log_max_age_days = 7
+
+
+# Data retention policies — how long to keep records before automatic cleanup.
+[server.retention]
+
+# Optional. Delete discovered API records older than this.
+# Default: "30d"
+discovered_retention = "30d"
+
+# Optional. Delete managed API records older than this.
+# Default: "90d"
+managed_api_retention = "90d"
+
+# Optional. Delete unmanaged API records older than this.
+# Default: "90d"
+unmanaged_retention = "90d"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  PHASE 1: DISCOVERY — DeepFlow eBPF traffic capture
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  Discovers APIs by analyzing HTTP traffic captured by DeepFlow's eBPF agent.
+#  Leave [discovery.source].type empty to disable this phase entirely.
+
+[discovery.source]
+
+# Set to "deepflow" to enable traffic discovery. Leave empty to disable.
+# Options: "deepflow", ""
+type = ""
+
+# REQUIRED if discovery enabled. IP address or hostname of the DeepFlow server.
+server_ip = ""
+
+# REQUIRED if discovery enabled. DeepFlow querier API port.
+# Default: 20416 (DeepFlow default). Check your DeepFlow deployment — NodePort
+# deployments may use a different port (e.g., 30617).
+querier_port = 20416
+
+# Optional. DeepFlow API version string.
+version = "v7.0"
+
+# REQUIRED if discovery enabled. How ADC queries traffic data.
+# Options:
+#   "sql_api"     — Query via DeepFlow's SQL API (recommended, simpler setup)
+#   "clickhouse"  — Query ClickHouse directly (requires [discovery.source.clickhouse])
+query_mode = "sql_api"
+
+
+# Only needed if query_mode = "clickhouse". Direct ClickHouse connection settings.
+[discovery.source.clickhouse]
+host = ""
+port = 9000
+user = "default"
+password = ""
+database = "flow_log"
+timezone = "Asia/Shanghai"
+
+
+[discovery.schedule]
+
+# Optional. How often to poll DeepFlow for new traffic data.
+# Default: "5m"
+poll_interval = "5m"
+
+# Optional. Time buffer to avoid querying data still being written by DeepFlow.
+# The query window is: [last_poll - safety_lag, now - safety_lag].
+# Default: "2m"
+safety_lag = "2m"
+
+# Optional. Maximum number of unique API signatures to process per cycle.
+# Protects against traffic spikes flooding the database.
+# Default: 1000
+max_signatures_per_cycle = 1000
+
+
+# ClickHouse WHERE-clause filters applied during traffic query.
+[discovery.traffic_filter]
+
+# Optional. IP protocol number. 6 = TCP (HTTP runs over TCP).
+# Default: 6
+protocol = 6
+
+# Optional. Layer-7 protocol names to include.
+# Default: ["HTTP", "HTTP2"]
+l7_protocols = ["HTTP", "HTTP2"]
+
+# Optional. Minimum DeepFlow direction score to filter server-side traffic.
+# Higher values = more confident that the captured side is the server.
+# Default: 200
+min_direction_score = 200
+
+# Optional. DeepFlow observation point.
+# "s-p" = server process (recommended — captures at the application layer).
+# Default: "s-p"
+observation_point = "s-p"
+
+
+# In-memory noise filters — remove non-API traffic after query.
+[discovery.noise_filter]
+
+# Optional. Path prefix/substring patterns to exclude (case-sensitive).
+# Matches if the request path starts with or contains any of these strings.
+# Common exclusions: health checks, Kubernetes internals, cloud metadata, docs.
+path_patterns = [
+    # Health check endpoints
+    "/health", "/healthz", "/ping", "/ready", "/readiness",
+    "/liveness", "/actuator",
+    # gRPC / internal services
+    "/agent.Synchronizer", "/grpc.health.v1.HealthService",
+    "/controller.", "/tagrecorder.",
+    # Cloud metadata endpoints
+    "/metadata", "/machine", "/vmSettings", "/vmAgentLog",
+    "/latest/meta-data", "/computeMetadata",
+    # Kubernetes API server traffic (not application APIs)
+    "/apis/", "/api/v1/",
+    # Static files and documentation
+    "/favicon.ico", "/.well-known", "/swagger", "/openapi",
+    "/robots.txt", "/.env",
+]
+
+# Optional. Exact paths to exclude (must match the full path).
+path_exact = ["/", "/version", "/metrics"]
+
+# Optional. Server ports to exclude from discovery.
+# Typically: API gateway ports, management console ports.
+# Example: [8280, 8243, 9443, 9763] for WSO2 APIM gateway/admin ports.
+excluded_ports = []
+
+# Optional. Domains/IPs to exclude (e.g., cloud metadata service).
+excluded_domains = ["169.254.169.254"]
+
+# Optional. DeepFlow agent IDs to exclude from results.
+excluded_agent_ids = []
+
+
+# Path normalization — replace dynamic path segments with {id} placeholders.
+[discovery.normalization]
+
+# Optional. Regex to identify API version segments (e.g., "v1", "v2.0").
+# Matched segments are preserved as-is, NOT replaced with {id}.
+version_pattern = "^v?[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+
+# Optional. Built-in regex patterns for identifying dynamic path segments.
+# Each pattern is tested against individual path segments. Matches are
+# replaced with {id} to normalize: /orders/123 → /orders/{id}
+builtin_patterns = [
+    # UUID: 550e8400-e29b-41d4-a716-446655440000
+    "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+    # MongoDB ObjectID or long hex strings (24+ hex chars)
+    "^[0-9a-fA-F]{24,}$",
+    # Pure numeric IDs: 123, 99001
+    "^[0-9]+$",
+    # Base64-encoded tokens or long alphanumeric IDs (20+ chars)
+    "^[A-Za-z0-9_-]{20,}={0,2}$",
+    # SKU-style codes: PROD-12345, WH-A1B2C3
+    "^[A-Z]{2,5}-[A-Z0-9-]{3,}$",
+    # Mixed alphanumeric IDs (8+ chars with at least one digit)
+    "^(?=.*[0-9])[a-zA-Z0-9]{8,}$",
+]
+
+# Optional. Additional user-defined normalization patterns.
+# Add your own regex patterns for domain-specific ID formats.
+user_patterns = []
+
+# Optional. Patterns that should NEVER be normalized (preserved as-is).
+# Prevents version segments and common path names from becoming {id}.
+exclude_patterns = [
+    # API version segments: v1, v2.0, v3.1.0
+    "^v?[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+    # Single version prefix: v1, v2
+    "^v[0-9]+$",
+    # Literal "api" path segment
+    "^api$",
+]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  PHASE 2: MANAGED — WSO2 APIM managed API sync
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  Fetches the list of APIs published in WSO2 API Manager so ADC can compare
+#  discovered traffic against managed APIs (Phase 3).
+#  Leave [managed.source].type empty to disable this phase.
+
+[managed.source]
+
+# Set to "wso2_apim" to enable managed API sync. Leave empty to disable.
+# Options: "wso2_apim", ""
+type = ""
+
+# REQUIRED if managed enabled. Base URL of WSO2 APIM Publisher portal.
+# Example: "https://apim.example.com:9443"
+base_url = ""
+
+# Optional. APIM REST API version.
+# Default: "v4"
+api_version = "v4"
+
+# Optional. Whether to verify TLS certificates when connecting to APIM.
+# Set to false only for self-signed certificates in development/testing.
+# Default: false
+verify_ssl = false
+
+
+# Authentication for WSO2 APIM. Supports basic auth or OAuth2 client credentials.
+[managed.source.auth]
+
+# REQUIRED if managed enabled. Authentication method.
+# Options: "basic", "oauth2"
+auth_type = "basic"
+
+# --- Basic authentication ---
+# REQUIRED if auth_type = "basic". APIM admin username.
+username = ""
+# REQUIRED if auth_type = "basic". APIM admin password.
+password = ""
+
+# --- OAuth2 client credentials ---
+# REQUIRED if auth_type = "oauth2". OAuth2 client ID registered in APIM.
+client_id = ""
+# REQUIRED if auth_type = "oauth2". OAuth2 client secret.
+client_secret = ""
+# REQUIRED if auth_type = "oauth2". Token endpoint URL.
+# Example: "https://apim.example.com:9443/oauth2/token"
+token_endpoint = ""
+
+# Optional. OAuth2 scopes to request. These scopes must be granted to the
+# client application in APIM.
+scopes = [
+    "apim:api_view",
+    "apim:service_catalog_view",
+    "apim:service_catalog_create",
+    "apim:service_catalog_update",
+]
+
+
+[managed.schedule]
+
+# Optional. How often to sync managed APIs from APIM.
+# Default: "10m"
+poll_interval = "10m"
+
+# Optional. HTTP request timeout for APIM API calls.
+# Default: "30s"
+request_timeout = "30s"
+
+# Optional. Number of retry attempts for failed APIM requests.
+# Uses exponential backoff with jitter between retries.
+# Default: 3
+max_retries = 3
+
+# Optional. Number of APIs to fetch per page from APIM Publisher API.
+# Default: 500
+page_size = 500
+
+
+[managed.sync]
+
+# Optional. Whether to include context-path-based API matching.
+# Default: false
+context_pass_through = false
+
+# Optional. API types to include when syncing from APIM.
+# Default: ["HTTP"]
+include_api_types = ["HTTP"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  PHASE 3: COMPARISON — Unmanaged API detection
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  Compares discovered APIs (Phase 1) against managed APIs (Phase 2) to find
+#  unmanaged APIs. Classifies them as SHADOW (completely unknown) or DRIFT
+#  (known API with undocumented operations).
+#
+#  Requires: [managed.source] must be configured.
+
+[comparison]
+
+# Set to true to enable unmanaged API detection.
+# Requires [managed.source].type to be configured.
+# Default: false
+enabled = false
+
+# Optional. Mark unmanaged APIs as stale if not seen in traffic for this long.
+# Stale APIs are candidates for cleanup.
+# Default: "7d"
+stale_after = "7d"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  PHASE 4: SPEC GENERATION — OpenAPI specification generation
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  Generates OpenAPI 3.0.3 specifications for each unmanaged API, based on
+#  the traffic patterns observed by DeepFlow.
+
+[spec_generation]
+
+# Set to true to enable automatic OpenAPI spec generation.
+# Default: false
+enabled = false
+
+# Optional. OpenAPI specification version to generate.
+# Default: "3.0.3"
+openapi_version = "3.0.3"
+
+
+# Controls what metadata is included in the generated OpenAPI specs.
+[spec_generation.content]
+
+# Optional. Include x-adc-traffic-stats extension with request counts/timing.
+# Default: true
+include_traffic_stats = true
+
+# Optional. Include x-adc-k8s extension with Kubernetes pod/namespace metadata.
+# Default: true
+include_k8s_metadata = true
+
+# Optional. Include x-adc-legacy extension with VM/process metadata.
+# Default: true
+include_legacy_metadata = true
+
+# Optional. Include x-adc-network extension with IP/port/protocol details.
+# Default: true
+include_network_metadata = true
+
+# Optional. Include example request URLs in operation descriptions.
+# Default: true
+include_sample_urls = true
+
+# Optional. Override the server URL in generated specs.
+# Leave empty to auto-detect from traffic data.
+# Example: "https://api.example.com"
+server_url_override = ""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  PHASE 5: SERVICE CATALOG — Push to WSO2 APIM Service Catalog
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  Pushes generated OpenAPI specs to WSO2 APIM's Service Catalog, making
+#  discovered APIs visible to API governance teams.
+#
+#  Requires: [managed.source] must be configured (reuses APIM authentication).
+
+[service_catalog]
+
+# Set to true to enable Service Catalog push.
+# Requires [managed.source].type to be configured for authentication.
+# Default: false
+enabled = false
+
+# Optional. Automatically push specs after generation (within the same cycle).
+# If false, specs are generated but not pushed until manually triggered.
+# Default: true
+auto_push = true
+
+# Optional. Push SHADOW APIs (completely unmanaged) to the catalog.
+# Default: true
+push_shadow = true
+
+# Optional. Push DRIFT APIs (managed APIs with undocumented operations).
+# Default: true
+push_drift = true
+
+# Optional. Re-push APIs that were previously pushed but deleted from the catalog.
+# Default: false
+re_push_deleted = false
+
+
+# Reconciliation — periodically sync catalog state with ADC's knowledge.
+[service_catalog.reconciliation]
+
+# Optional. Enable catalog reconciliation (detect deleted/modified entries).
+# Default: false
+enabled = false
+
+# Optional. Remove catalog entries that ADC didn't create.
+# WARNING: This will delete catalog entries created by other tools or manually.
+# Requires reconciliation.enabled = true.
+# Default: false
+cleanup_unowned = false
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  DATABASE — PostgreSQL connection (REQUIRED)
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  ADC stores all state in PostgreSQL. This section is always required.
+#  Tables are created automatically on first startup (auto-migration).
+
+[catalog.datastore]
+
+# Optional. Database type. Only "postgresql" is supported.
+type = "postgresql"
+
+# REQUIRED. PostgreSQL server hostname or IP address.
+host = ""
+
+# Optional. PostgreSQL server port.
+# Default: 5432
+port = 5432
+
+# REQUIRED. Database name. Must exist before starting ADC.
+# Create it with: CREATE DATABASE adc;
+database = "adc"
+
+# REQUIRED. Database user. Must have CREATE TABLE and full CRUD permissions.
+# Create with: CREATE USER adc_user WITH PASSWORD 'your_password';
+#              GRANT ALL PRIVILEGES ON DATABASE adc TO adc_user;
+user = ""
+
+# REQUIRED. Database password.
+password = ""
+
+# Optional. Maximum number of connections in the pool.
+# Default: 10
+max_connections = 10
+
+# Optional. PostgreSQL SSL mode.
+# Options: "disable", "require", "verify-ca", "verify-full"
+# Default: "disable"
+ssl_mode = "disable"

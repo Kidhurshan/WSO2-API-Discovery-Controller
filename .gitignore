@@ -1,0 +1,22 @@
+# Binaries
+bin/
+/adc
+/adc-linux-amd64
+*.exe
+
+# Claude AI artifacts — not part of the project
+claude/
+.claude/
+
+# Config with real values (keep config.toml as template)
+config/config.example.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adc
+  namespace: adc-system
+  labels:
+    app: adc
+    app.kubernetes.io/name: adc
+    app.kubernetes.io/component: controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adc
+  template:
+    metadata:
+      labels:
+        app: adc
+    spec:
+      serviceAccountName: adc
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: adc
+        image: wso2/adc:latest
+        args: ["--config", "/etc/adc/config.toml"]
+        ports:
+        - name: health
+          containerPort: 8090
+          protocol: TCP
+        volumeMounts:
+        - name: config
+          mountPath: /etc/adc
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        startupProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          failureThreshold: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          periodSeconds: 10
+          timeoutSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: adc-config
