@@ -3,7 +3,7 @@
 **Date:** 2026-04-07
 **Environment:** TechMart Lab (tm-lab-sado-01)
 **ADC Version:** dev (Round 3 build)
-**APIM:** WSO2 API Manager 4.x at https://10.50.0.10:9443
+**APIM:** WSO2 API Manager 4.x
 
 ---
 
