@@ -66,7 +66,6 @@ type ClickHouseConfig struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
 	Database string `toml:"database"`
-	Timezone string `toml:"timezone"`
 }
 
 // ScheduleConfig holds Phase 1 scheduling settings.
