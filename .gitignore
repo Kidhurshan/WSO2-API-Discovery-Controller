@@ -17,6 +17,9 @@ config/config.example.toml
 *.swp
 *.swo
 
+# Test results — environment-specific artifacts, not suitable for public repo
+test/results/
+
 # OS
 .DS_Store
 Thumbs.db
