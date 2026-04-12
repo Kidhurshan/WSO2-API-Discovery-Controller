@@ -1,0 +1,28 @@
+# ClusterIP service exposing the bundled PostgreSQL inside the cluster.
+#
+# DNS name resolved by ADC: postgres.adc-system.svc.cluster.local
+# Short form (same namespace): postgres
+# Cross-namespace form:        postgres.adc-system
+#
+# This is intentionally NOT a NodePort or LoadBalancer — the bundled DB
+# should never be exposed outside the cluster. For external access, use
+# external PostgreSQL instead.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: adc-system
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: adc
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP

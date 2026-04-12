@@ -1,27 +1,71 @@
-version: '3.8'
+# WSO2 API Discovery Controller — Docker Compose (bundled PostgreSQL).
+#
+# This is the default deployment for local dev, CI, and small POCs. It runs
+# both ADC and a PostgreSQL 17 instance in the same docker network. The DB
+# is reachable only on the internal `adc-net` network — port 5432 is NOT
+# published to the host.
+#
+# Quick start:
+#   cd deploy/docker/
+#   cp .env.example .env
+#   docker compose up -d
+#   docker compose logs -f adc
+#
+# To use external PostgreSQL instead, see docker-compose.external-db.yml
+# and ./README.md.
+
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: adc-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Store data in a subdirectory so the volume root stays clean.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - adc-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # $$ escapes compose interpolation so $POSTGRES_USER is expanded by
+      # the shell INSIDE the container at healthcheck time, not by compose.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - adc-net
+
   adc:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
+    image: wso2/adc:latest
+    container_name: adc
+    restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    env_file: .env
     volumes:
+      # Bind-mount the docker-tuned config so edits don't require a rebuild.
       - ./config.toml:/etc/adc/config.toml:ro
     ports:
       - "8090:8090"
-    restart: always
-
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: adc
-      POSTGRES_USER: adc_user
-      POSTGRES_PASSWORD: adc_password
-    volumes:
-      - adc-pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    networks:
+      - adc-net
 
 volumes:
   adc-pgdata:
+    name: adc-pgdata
+
+networks:
+  adc-net:
+    name: adc-net
+    driver: bridge

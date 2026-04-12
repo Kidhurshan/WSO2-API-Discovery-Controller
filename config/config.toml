@@ -465,11 +465,29 @@ cleanup_unowned = false
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  DATABASE — PostgreSQL connection (REQUIRED)
+#  DATABASE — PostgreSQL connection (REQUIRED, auto-provisioned by default)
 # ──────────────────────────────────────────────────────────────────────────────
 #
-#  ADC stores all state in PostgreSQL. This section is always required.
-#  Tables are created automatically on first startup (auto-migration).
+#  ADC stores all state in PostgreSQL and ships with a bundled PostgreSQL by
+#  default — you don't need to set up the database manually.
+#
+#    • VM install:      `sudo ./deploy/systemd/install.sh` installs PostgreSQL
+#                       locally and creates the adc database with a random
+#                       password (patched into this file automatically).
+#    • Kubernetes:      `kubectl apply -k deploy/kubernetes/` deploys a
+#                       postgres pod alongside ADC in the adc-system namespace.
+#    • Docker Compose:  `docker compose up -d` runs postgres + adc together.
+#
+#  In all three modes, ADC's auto-migration creates the schema on first
+#  startup — the bundled PostgreSQL ships only an empty database.
+#
+#  TO USE YOUR OWN POSTGRESQL (RDS, CloudSQL, on-prem, etc.):
+#    1. Read docs/external-postgres.md for setup steps and required permissions
+#    2. Or copy config/config.toml.external-db as a starting template
+#    3. Set host/port/database/user/password below to your DB's coordinates
+#    4. Set ssl_mode = "require" (or stronger) for cloud DBs
+#    5. K8s users: remove the postgres-* resources from kustomization.yaml
+#    6. VM users: run `install.sh --external-db` (skips bundled PostgreSQL)
 
 [catalog.datastore]
 
@@ -477,23 +495,32 @@ cleanup_unowned = false
 type = "postgresql"
 
 # REQUIRED. PostgreSQL server hostname or IP address.
-host = ""
+# Bundled defaults:
+#   VM install:      "localhost"
+#   Kubernetes:      "postgres.adc-system" (overridden by K8s configmap)
+#   Docker Compose:  "postgres" (overridden by docker config)
+# For external PostgreSQL, set this to your DB endpoint.
+host = "localhost"
 
 # Optional. PostgreSQL server port.
 # Default: 5432
 port = 5432
 
-# REQUIRED. Database name. Must exist before starting ADC.
-# Create it with: CREATE DATABASE adc;
+# REQUIRED. Database name. Auto-created by all bundled install methods.
+# For external DB, create it manually with: CREATE DATABASE adc;
 database = "adc"
 
-# REQUIRED. Database user. Must have CREATE TABLE and full CRUD permissions.
-# Create with: CREATE USER adc_user WITH PASSWORD 'your_password';
-#              GRANT ALL PRIVILEGES ON DATABASE adc TO adc_user;
-user = ""
+# REQUIRED. Database user. Must have CREATE TABLE and full CRUD permissions
+# (auto-migration creates tables on first startup).
+# Bundled installs auto-create this user. For external DB, create with:
+#   CREATE USER adc_user WITH PASSWORD 'your_password';
+#   GRANT ALL PRIVILEGES ON DATABASE adc TO adc_user;
+user = "adc_user"
 
 # REQUIRED. Database password.
-password = ""
+# install.sh randomizes this on VM installs. K8s/Docker use a Secret/env var.
+# CHANGE this default if exposing the bundled DB beyond localhost.
+password = "adc_password"
 
 # Optional. Maximum number of connections in the pool.
 # Default: 10
@@ -501,5 +528,7 @@ max_connections = 10
 
 # Optional. PostgreSQL SSL mode.
 # Options: "disable", "require", "verify-ca", "verify-full"
+# Use "disable" for bundled DB (local/in-cluster traffic).
+# Use "require" or stronger for external/cloud DBs.
 # Default: "disable"
 ssl_mode = "disable"

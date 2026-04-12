@@ -199,14 +199,24 @@ type DatastoreConfig struct {
 }
 
 // Load reads and parses a TOML configuration file, applies defaults, and validates.
+//
+// Before TOML parsing, ${VAR} placeholders in the raw file bytes are replaced
+// with the values of matching environment variables (see expandEnvVars). This
+// allows secrets to be injected from a Kubernetes Secret or systemd
+// EnvironmentFile without committing them to the config file.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config file %s: %w", path, err)
 	}
 
+	// Expand ${VAR} env var references in the raw TOML before parsing.
+	// Bare $VAR (without braces) is intentionally NOT expanded so that regex
+	// patterns containing the end-of-string anchor `$` continue to work.
+	expanded := expandEnvVars(string(data))
+
 	var cfg Config
-	if err := toml.Unmarshal(data, &cfg); err != nil {
+	if err := toml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("parse config file %s: %w", path, err)
 	}
 
