@@ -22,11 +22,21 @@ spec:
       containers:
       - name: adc
         image: wso2/adc:latest
+        # Use IfNotPresent so air-gapped clusters and locally-imported
+        # images (k3s ctr import / kind load) work without a registry.
+        # Override to Always when pulling from a real registry.
+        imagePullPolicy: IfNotPresent
         args: ["--config", "/etc/adc/config.toml"]
         ports:
         - name: health
           containerPort: 8090
           protocol: TCP
+        # Inject DB credentials from postgres-secret. ADC's config loader
+        # expands ${POSTGRES_DB}, ${POSTGRES_USER}, ${POSTGRES_PASSWORD}
+        # references in adc-configmap.yaml against this environment.
+        envFrom:
+        - secretRef:
+            name: postgres-secret
         volumeMounts:
         - name: config
           mountPath: /etc/adc

@@ -1,8 +1,8 @@
 # WSO2 API Discovery Controller (ADC)
 
-[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13+-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
 A Go daemon that discovers unmanaged APIs via [DeepFlow](https://deepflow.io/) eBPF traffic capture, compares them against APIs managed in [WSO2 API Manager](https://wso2.com/api-manager/), generates OpenAPI 3.0.3 specifications, and pushes them to the APIM Service Catalog for governance.
 
@@ -42,33 +42,45 @@ A Go daemon that discovers unmanaged APIs via [DeepFlow](https://deepflow.io/) e
 
 ## Prerequisites
 
-| Component | Version | Purpose |
-|-----------|---------|---------|
-| Go | 1.22+ | Build from source |
-| PostgreSQL | 13+ | State store (tables auto-created) |
-| DeepFlow | 7.0+ | eBPF traffic capture |
-| WSO2 API Manager | 4.x | Managed API source + Service Catalog target |
+| Component | Version | Purpose | Notes |
+|-----------|---------|---------|-------|
+| Go | 1.25+ | Build from source | Only when building from source |
+| PostgreSQL | 15+ | State store (tables auto-created) | **Bundled by default** in all 3 deploy modes |
+| DeepFlow | 7.0+ | eBPF traffic capture | Optional — Phase 1 disabled if absent |
+| WSO2 API Manager | 4.x | Managed API source + Service Catalog target | Optional — Phases 2 & 5 disabled if absent |
+
+PostgreSQL ships bundled with each deploy mode (postgres:17-alpine for
+Docker/K8s, distro package for systemd) so the only hard prerequisite for
+trying ADC is the deploy target itself. Bring your own PostgreSQL via the
+`--external-db` switch when you want to use AWS RDS / Azure / GCP / on-prem.
 
 ## Quick Start
 
+The fastest path is **Docker Compose** — one command brings up ADC + bundled PostgreSQL:
+
 ```bash
-# Build
-make build
-
-# Configure
-cp config/config.toml /etc/adc/config.toml
-# Edit /etc/adc/config.toml — fill in PostgreSQL, DeepFlow, and APIM details
-
-# Validate config
-./bin/adc --config /etc/adc/config.toml --validate
-
-# Run
-./bin/adc --config /etc/adc/config.toml
+cd deploy/docker/
+cp .env.example .env
+# Edit .env and set a strong POSTGRES_PASSWORD
+docker compose up -d
+docker compose logs -f adc
 ```
+
+ADC is now reachable at `http://localhost:8090/healthz`. All five pipeline
+phases are **disabled** out of the box — copy the section(s) you want to
+enable from [`config/config.toml`](config/config.toml) into
+`deploy/docker/config.toml` and `docker compose restart adc`.
+
+For VM and Kubernetes deployments, see the [Deployment](#deployment) section below.
 
 ## Configuration
 
-ADC uses a single TOML configuration file. See [`config/config.toml`](config/config.toml) for a fully documented template with all available options.
+ADC uses a single TOML configuration file. There are two canonical templates:
+
+- [`config/config.toml`](config/config.toml) — bundled-PostgreSQL template (default)
+- [`config/config.toml.external-db`](config/config.toml.external-db) — external-PostgreSQL template
+
+Both files document every section. Sections:
 
 | Section | Purpose |
 |---------|---------|
@@ -82,40 +94,59 @@ ADC uses a single TOML configuration file. See [`config/config.toml`](config/con
 
 Phases can be enabled independently. Minimum config: just `[catalog.datastore]` with all phases disabled.
 
+ADC's config loader supports `${VAR}` env var expansion in any string field, so the same TOML file can be reused across Docker, Kubernetes, and systemd deploys with credentials injected from `.env` files / Secrets / EnvironmentFiles. See [`internal/config/envvar.go`](internal/config/envvar.go) for the expansion rules.
+
 ## Deployment
 
-### VM / Bare Metal (systemd)
+ADC ships three first-class deployment modes. Each defaults to **bundled
+PostgreSQL** so you can try ADC without provisioning a database, and each
+supports an **external-DB** switch when you want to point at an existing
+PostgreSQL server.
+
+| Mode | Bundled DB | External DB switch | Operator guide |
+|------|-----------|---------------------|----------------|
+| Docker Compose | `postgres:17-alpine` sidecar | `-f docker-compose.external-db.yml` | [deploy/docker/README.md](deploy/docker/README.md) |
+| Kubernetes (kustomize) | `postgres:17-alpine` + 20Gi PVC | Remove `postgres-*` from `kustomization.yaml` | [deploy/kubernetes/README.md](deploy/kubernetes/README.md) |
+| systemd (VM / bare metal) | Distro package via `postgres-bootstrap.sh` | `install.sh --external-db` | [deploy/systemd/README.md](deploy/systemd/README.md) |
+
+### Docker Compose
 
 ```bash
-# Build for Linux
-make build-linux
-
-# Copy binary and config
-sudo cp bin/adc-linux-amd64 /usr/local/bin/adc
-sudo cp config/config.toml /etc/adc/config.toml
-
-# Install systemd service
-sudo cp deploy/systemd/adc.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now adc
-```
-
-### Docker
-
-```bash
-make docker
-docker run -v /etc/adc/config.toml:/etc/adc/config.toml wso2/adc:0.1.0
+cd deploy/docker/
+cp .env.example .env                       # set POSTGRES_PASSWORD
+docker compose up -d                       # bundled (default)
+# or
+cp .env.external-db.example .env.external-db
+docker compose -f docker-compose.external-db.yml up -d   # external DB
 ```
 
 ### Kubernetes
 
 ```bash
-kubectl apply -f deploy/kubernetes/namespace.yaml
-kubectl create secret generic adc-config -n adc-system --from-file=config.toml=/etc/adc/config.toml
-kubectl apply -f deploy/kubernetes/
+# 1. Set a strong password in deploy/kubernetes/postgres-secret.yaml
+# 2. Apply via kustomize (orders namespace → secret → pvc → postgres → adc)
+kubectl apply -k deploy/kubernetes/
+
+# Watch
+kubectl -n adc-system get pods -w
 ```
 
-Kubernetes manifests include: Deployment (with startup/liveness/readiness probes), Service, ServiceAccount, and Namespace.
+To use an existing PostgreSQL, edit `deploy/kubernetes/adc-configmap.yaml` with your DB host/port and remove the `postgres-*` resources from `kustomization.yaml`.
+
+### VM / Bare Metal (systemd)
+
+```bash
+# Bundled (installs postgres if missing, generates a strong random password,
+# writes /etc/adc/adc.env, installs and starts the systemd unit)
+sudo deploy/systemd/install.sh
+
+# Or, point at an existing PostgreSQL
+sudo deploy/systemd/install.sh --external-db --yes
+```
+
+`install.sh` is interactive by default; pass `--yes` for non-interactive use (CI / Ansible). `uninstall.sh` removes the unit and (with `--purge --drop-db`) wipes data.
+
+For `make`-based shortcuts, see `make help` (`make docker-up`, `make install`, `make k8s-apply`, etc.).
 
 ## Pipeline Phases
 
@@ -170,18 +201,35 @@ internal/
 ├── specgen/                      Phase 4: OpenAPI spec generation
 └── store/                        PostgreSQL repositories (repository pattern)
 schema/migrations/                DDL migration files (auto-applied)
-config/config.toml                Configuration template
+config/
+├── config.toml                   Bundled-PostgreSQL config template
+└── config.toml.external-db       External-PostgreSQL config template
 deploy/
-├── docker/Dockerfile             Multi-stage Docker build
-├── kubernetes/                   K8s manifests (Deployment, Service, SA, NS)
-└── systemd/adc.service           systemd unit file
+├── docker/                       Docker Compose (bundled + external-db variants)
+│   ├── Dockerfile                Multi-stage Docker build
+│   ├── docker-compose.yml        Bundled (postgres:17 + adc)
+│   ├── docker-compose.external-db.yml   External-DB variant (adc only)
+│   ├── config.toml               Docker-tuned bundled config
+│   ├── config.toml.external-db   Docker-tuned external-db config
+│   └── README.md
+├── kubernetes/                   K8s kustomize manifests (flat naming)
+│   ├── adc-*.yaml                Namespace, ConfigMap, Deployment, Service, SA
+│   ├── postgres-*.yaml           Bundled postgres Secret, PVC, Deployment, Service
+│   ├── kustomization.yaml        Apply order + labels
+│   └── README.md
+└── systemd/                      VM / bare-metal install
+    ├── adc.service               systemd unit
+    ├── install.sh                Interactive installer (--yes, --external-db)
+    ├── uninstall.sh              Conservative uninstaller (--purge, --drop-db)
+    ├── postgres-bootstrap.sh     Distro-detecting postgres provisioner
+    └── README.md
 test/results/                     Test reports from each development round
 ```
 
 ## Building from Source
 
 ```bash
-# Prerequisites: Go 1.22+
+# Prerequisites: Go 1.25+
 
 # Build for current platform
 make build

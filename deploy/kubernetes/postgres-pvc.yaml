@@ -1,0 +1,27 @@
+# Persistent storage for the bundled PostgreSQL.
+#
+# Default size: 20Gi — sufficient for 1-2 years of growth on most ADC
+# deployments. See docs/external-postgres.md for sizing guidance.
+#
+# storageClassName is left unset so the cluster's default StorageClass is used.
+# To pin a specific class (recommended for cloud production), uncomment and set:
+#   storageClassName: gp3              # AWS EKS
+#   storageClassName: standard-rwo     # GCP GKE
+#   storageClassName: managed-csi      # Azure AKS
+#   storageClassName: local-path       # K3s / kind
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: adc-system
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: adc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi

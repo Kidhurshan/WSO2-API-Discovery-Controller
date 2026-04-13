@@ -11,6 +11,11 @@ claude/
 # Config with real values (keep config.toml as template)
 config/config.example.toml
 
+# Docker compose env files — contain credentials, never committed.
+# .env.example and .env.external-db.example ARE tracked, as templates.
+deploy/docker/.env
+deploy/docker/.env.external-db
+
 # IDE
 .idea/
 .vscode/

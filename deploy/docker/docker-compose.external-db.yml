@@ -1,0 +1,52 @@
+# WSO2 API Discovery Controller — Docker Compose (external PostgreSQL).
+#
+# Use this variant when you have your own PostgreSQL (AWS RDS, Azure
+# Database for PostgreSQL, GCP Cloud SQL, on-prem cluster, etc.) and do
+# NOT want to run the bundled postgres container.
+#
+# Quick start:
+#   cd deploy/docker/
+#   cp .env.external-db.example .env.external-db
+#   # Edit .env.external-db with your DB host + credentials
+#   cp ../../config/config.toml.external-db ./config.toml.external-db
+#   # Edit config.toml.external-db to enable the phases you want
+#   docker compose -f docker-compose.external-db.yml up -d
+#   docker compose -f docker-compose.external-db.yml logs -f adc
+#
+# The external DB must be reachable from the docker bridge network. If
+# your DB is on the same host as docker, use `host.docker.internal`
+# (Docker Desktop) or the host's LAN IP — NOT 127.0.0.1.
+#
+# ADC's auto-migration creates the schema on first startup. The user in
+# .env.external-db needs CREATE TABLE permission on the target database.
+
+services:
+  adc:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: wso2/adc:latest
+    container_name: adc
+    restart: unless-stopped
+    env_file: .env.external-db
+    volumes:
+      # Bind-mount the external-db config so edits don't require a rebuild.
+      - ./config.toml.external-db:/etc/adc/config.toml:ro
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      # Longer start_period — external DB connect + migrations may take
+      # noticeably longer than the bundled-postgres path, especially over
+      # WAN links to cloud DBs.
+      start_period: 60s
+    networks:
+      - adc-net
+
+networks:
+  adc-net:
+    name: adc-net
+    driver: bridge

@@ -1,5 +1,5 @@
 # Multi-stage build for WSO2 API Discovery Controller
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 

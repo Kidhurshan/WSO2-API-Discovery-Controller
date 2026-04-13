@@ -52,15 +52,53 @@ fmt:  ## Format code
 docker:  ## Build Docker image
 	docker build -t wso2/adc:$(VERSION) -f deploy/docker/Dockerfile .
 
+.PHONY: docker-up
+docker-up:  ## Start bundled docker-compose stack (postgres + adc)
+	cd deploy/docker && [ -f .env ] || cp .env.example .env
+	cd deploy/docker && docker compose up -d
+
+.PHONY: docker-up-external
+docker-up-external:  ## Start docker-compose against external postgres
+	cd deploy/docker && [ -f .env.external-db ] || cp .env.external-db.example .env.external-db
+	cd deploy/docker && docker compose -f docker-compose.external-db.yml up -d
+
+.PHONY: docker-down
+docker-down:  ## Stop bundled docker-compose stack
+	cd deploy/docker && docker compose down
+
+.PHONY: docker-down-external
+docker-down-external:  ## Stop external-db docker-compose stack
+	cd deploy/docker && docker compose -f docker-compose.external-db.yml down
+
+# ── systemd (VM) ──
+
+.PHONY: install
+install: build-linux  ## Install ADC as a systemd service (bundled postgres). Use INSTALL_FLAGS="--external-db --yes" to override.
+	sudo deploy/systemd/install.sh $(INSTALL_FLAGS)
+
+.PHONY: uninstall
+uninstall:  ## Uninstall ADC systemd service. Use UNINSTALL_FLAGS="--purge --drop-db" to wipe data.
+	sudo deploy/systemd/uninstall.sh $(UNINSTALL_FLAGS)
+
+# ── Kubernetes ──
+
+.PHONY: k8s-apply
+k8s-apply:  ## Apply all K8s manifests via kustomize (bundled postgres)
+	kubectl apply -k deploy/kubernetes/
+
+.PHONY: k8s-delete
+k8s-delete:  ## Delete all K8s manifests via kustomize
+	kubectl delete -k deploy/kubernetes/
+
 # ── Development ──
 
 .PHONY: run
-run:  ## Run locally with example config
-	go run ./cmd/adc/ --config config/config.example.toml
+run:  ## Run locally with config template
+	go run ./cmd/adc/ --config config/config.toml
 
 .PHONY: validate
-validate:  ## Validate example config
-	go run ./cmd/adc/ --config config/config.example.toml --validate
+validate:  ## Validate config template
+	go run ./cmd/adc/ --config config/config.toml --validate
 
 # ── Schema ──
 

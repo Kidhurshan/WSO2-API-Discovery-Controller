@@ -1,0 +1,89 @@
+# Bundled PostgreSQL for ADC.
+#
+# Image: postgres:17-alpine — latest stable major version, small footprint.
+# Strategy: Recreate (single replica + single PVC, RollingUpdate not safe).
+#
+# This deployment ships an empty database. ADC's auto-migration creates all
+# tables on first startup — the postgres image is intentionally schema-agnostic.
+#
+# For production-grade PostgreSQL (HA, backups, monitoring), use external
+# PostgreSQL — see docs/external-postgres.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: adc-system
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: adc
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: adc
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+          env:
+            # Store data under a subdirectory so the PVC root stays clean.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - adc_user
+                - -d
+                - adc
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - adc_user
+                - -d
+                - adc
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
