@@ -22,8 +22,9 @@ deploy/docker/.env.external-db
 *.swp
 *.swo
 
-# Test results — environment-specific artifacts, not suitable for public repo
-test/results/
+# Test files — kept locally, not pushed to remote
+*_test.go
+test/
 
 # OS
 .DS_Store
