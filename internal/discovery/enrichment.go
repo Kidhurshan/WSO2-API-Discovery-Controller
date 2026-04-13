@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/adc/internal/config"
 	"github.com/wso2/adc/internal/deepflow"
 	"github.com/wso2/adc/internal/logging"
 	"github.com/wso2/adc/internal/models"
@@ -62,17 +61,8 @@ func (p *Phase) enrich(ctx context.Context, signatures []models.APISignature, lo
 		}
 	}
 
-	tz := p.cfg.Discovery.Source.ClickHouse.Timezone
-	if tz == "" {
-		tz = "UTC"
-	}
-	loc, _ := time.LoadLocation(tz)
-	if loc == nil {
-		loc = time.UTC
-	}
-
-	timeStart := minTime.Add(-1 * time.Second).In(loc).Format("2006-01-02 15:04:05")
-	timeEnd := maxTime.Add(1 * time.Second).In(loc).Format("2006-01-02 15:04:05")
+	timeStart := minTime.Add(-1 * time.Second).Unix()
+	timeEnd := maxTime.Add(1 * time.Second).Unix()
 	urlFilter := buildURLFilter(sampleURLs)
 
 	// Step 5a: Query s-p records
@@ -111,9 +101,9 @@ func (p *Phase) enrich(ctx context.Context, signatures []models.APISignature, lo
 	return records, nil
 }
 
-func querySP(ctx context.Context, client deepflow.Client, urlFilter, timeStart, timeEnd string) ([]map[string]interface{}, error) {
+func querySP(ctx context.Context, client deepflow.Client, urlFilter string, timeStart, timeEnd int64) ([]map[string]interface{}, error) {
 	sql := fmt.Sprintf(`SELECT
-    request_resource, request_type, start_time,
+    request_resource, request_type, toUnixTimestamp(start_time) AS start_time,
     request_domain, endpoint, l7_protocol_str, is_tls, version,
     response_code, response_duration, server_port, agent_id,
     ip4_1 AS server_ip, pod_service_1 AS k8s_service, pod_ns_1 AS k8s_namespace,
@@ -122,29 +112,29 @@ func querySP(ctx context.Context, client deepflow.Client, urlFilter, timeStart, 
 FROM l7_flow_log
 WHERE observation_point = "s-p"
   AND request_resource IN (%s)
-  AND start_time >= "%s"
-  AND start_time <= "%s"`, urlFilter, timeStart, timeEnd)
+  AND toUnixTimestamp(start_time) >= %d
+  AND toUnixTimestamp(start_time) <= %d`, urlFilter, timeStart, timeEnd)
 
 	return client.Query(ctx, sql)
 }
 
-func queryS(ctx context.Context, client deepflow.Client, urlFilter, timeStart, timeEnd string) ([]map[string]interface{}, error) {
+func queryS(ctx context.Context, client deepflow.Client, urlFilter string, timeStart, timeEnd int64) ([]map[string]interface{}, error) {
 	sql := fmt.Sprintf(`SELECT
-    request_resource, request_type, start_time,
+    request_resource, request_type, toUnixTimestamp(start_time) AS start_time,
     ip4_0 AS source_ip, ip4_1 AS host_ip,
     is_internet_0 AS is_external
 FROM l7_flow_log
 WHERE observation_point = "s"
   AND request_resource IN (%s)
-  AND start_time >= "%s"
-  AND start_time <= "%s"`, urlFilter, timeStart, timeEnd)
+  AND toUnixTimestamp(start_time) >= %d
+  AND toUnixTimestamp(start_time) <= %d`, urlFilter, timeStart, timeEnd)
 
 	return client.Query(ctx, sql)
 }
 
-func queryCP(ctx context.Context, client deepflow.Client, urlFilter, timeStart, timeEnd string) ([]map[string]interface{}, error) {
+func queryCP(ctx context.Context, client deepflow.Client, urlFilter string, timeStart, timeEnd int64) ([]map[string]interface{}, error) {
 	sql := fmt.Sprintf(`SELECT
-    request_resource, request_type, start_time,
+    request_resource, request_type, toUnixTimestamp(start_time) AS start_time,
     ip4_0 AS source_service_ip, process_kname_0 AS source_process_name,
     pod_0 AS source_k8s_pod, pod_ns_0 AS source_k8s_namespace,
     pod_service_0 AS source_k8s_service, pod_cluster_0 AS source_k8s_cluster,
@@ -152,8 +142,8 @@ func queryCP(ctx context.Context, client deepflow.Client, urlFilter, timeStart, 
 FROM l7_flow_log
 WHERE observation_point = "c-p"
   AND request_resource IN (%s)
-  AND start_time >= "%s"
-  AND start_time <= "%s"`, urlFilter, timeStart, timeEnd)
+  AND toUnixTimestamp(start_time) >= %d
+  AND toUnixTimestamp(start_time) <= %d`, urlFilter, timeStart, timeEnd)
 
 	return client.Query(ctx, sql)
 }
@@ -282,7 +272,3 @@ func buildURLFilter(urls []string) string {
 	return builder.String()
 }
 
-// getClickHouseConfig returns the ClickHouse timezone config.
-func getClickHouseConfig(cfg *config.Config) config.ClickHouseConfig {
-	return cfg.Discovery.Source.ClickHouse
-}

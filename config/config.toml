@@ -134,7 +134,6 @@ port = 9000
 user = "default"
 password = ""
 database = "flow_log"
-timezone = "Asia/Shanghai"
 
 
 [discovery.schedule]

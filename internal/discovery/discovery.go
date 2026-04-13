@@ -147,20 +147,6 @@ func (p *Phase) calculateWindow(ctx context.Context, log *logging.Logger) (time.
 }
 
 func (p *Phase) querySignatures(ctx context.Context, start, end time.Time, log *logging.Logger) ([]models.APISignature, error) {
-	tz := p.cfg.Discovery.Source.ClickHouse.Timezone
-	if tz == "" {
-		tz = "UTC"
-	}
-
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		log.Warnw("Invalid timezone, using UTC", "timezone", tz, "error", err)
-		loc = time.UTC
-	}
-
-	startStr := start.In(loc).Format("2006-01-02 15:04:05")
-	endStr := end.In(loc).Format("2006-01-02 15:04:05")
-
 	filter := p.cfg.Discovery.TrafficFilter
 	sql := fmt.Sprintf(`SELECT
     request_type,
@@ -169,7 +155,7 @@ func (p *Phase) querySignatures(ctx context.Context, start, end time.Time, log *
     agent_id,
     Count(row) AS hit_count,
     any(request_resource) AS sample_url,
-    any(start_time) AS sample_start_time,
+    toUnixTimestamp(any(start_time)) AS sample_start_time,
     any(request_domain) AS sample_request_domain,
     any(is_tls) AS sample_is_tls,
     any(l7_protocol_str) AS sample_protocol,
@@ -181,8 +167,8 @@ WHERE observation_point = "%s"
   AND protocol = %d
   AND l7_protocol_str IN (%s)
   AND direction_score >= %d
-  AND start_time >= "%s"
-  AND start_time < "%s"
+  AND toUnixTimestamp(start_time) >= %d
+  AND toUnixTimestamp(start_time) < %d
   AND endpoint != ""
   AND request_type != ""
 GROUP BY request_type, endpoint, server_port, agent_id
@@ -192,8 +178,8 @@ LIMIT %d`,
 		filter.Protocol,
 		joinProtocolsDoubleQuote(filter.L7Protocols),
 		filter.MinDirectionScore,
-		startStr,
-		endStr,
+		start.Unix(),
+		end.Unix(),
 		p.cfg.Discovery.Schedule.MaxSignaturesPerCycle,
 	)
 
