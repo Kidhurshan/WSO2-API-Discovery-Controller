@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/wso2/adc/internal/config"
+	"github.com/wso2/adc/internal/httputil"
 )
 
 // AuthProvider provides authorization headers for APIM API calls.
@@ -102,9 +102,16 @@ func (o *oauth2Auth) refreshToken() error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := httputil.ReadResponseBody(resp, 0)
+	if err != nil {
+		return fmt.Errorf("read token response: %w", err)
+	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("token request returned HTTP %d: %s", resp.StatusCode, string(body))
+		truncated := string(body)
+		if len(truncated) > 500 {
+			truncated = truncated[:500]
+		}
+		return fmt.Errorf("token request returned HTTP %d: %s", resp.StatusCode, truncated)
 	}
 
 	var tokenResp struct {

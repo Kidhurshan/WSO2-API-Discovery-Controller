@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -59,7 +58,7 @@ func (c *querierClient) Query(ctx context.Context, sql string) ([]map[string]int
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httputil.ReadResponseBody(resp, 0)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
