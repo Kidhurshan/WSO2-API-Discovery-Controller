@@ -51,7 +51,11 @@ func (r *ManagedRepo) UpsertAPI(ctx context.Context, api *models.ManagedAPI, ops
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if rbErr := tx.Rollback(ctx); rbErr != nil && rbErr != pgx.ErrTxClosed {
+			r.logger.Warnw("transaction rollback failed", "error", rbErr)
+		}
+	}()
 
 	// Upsert parent API
 	upsertSQL := `

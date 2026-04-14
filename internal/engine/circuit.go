@@ -83,8 +83,9 @@ func (cb *CircuitBreaker) RecordFailure() {
 
 	if cb.FailureCount >= cb.Threshold {
 		cb.State = CircuitOpen
-		// Exponential backoff: 1m * 3^(failures-threshold), capped at MaxBackoff
-		exponent := float64(cb.FailureCount - cb.Threshold)
+		// Exponential backoff: 1m * 3^(failures-threshold), capped at MaxBackoff.
+		// Cap exponent at 20: 3^20 ≈ 3.5B, safely within float64 range before math.Min clamps to MaxBackoff.
+		exponent := math.Min(float64(cb.FailureCount-cb.Threshold), 20)
 		backoff := time.Duration(math.Min(
 			float64(time.Minute)*math.Pow(3, exponent),
 			float64(cb.MaxBackoff),
