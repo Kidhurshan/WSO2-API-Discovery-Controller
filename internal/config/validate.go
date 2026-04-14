@@ -88,8 +88,35 @@ func (c *Config) Validate() error {
 	if err := validateRequired(c.Catalog.Datastore.Password, "[catalog.datastore].password"); err != nil {
 		return err
 	}
+	if err := validateEnum(c.Catalog.Datastore.SSLMode,
+		[]string{"disable", "require", "verify-ca", "verify-full"},
+		"[catalog.datastore].ssl_mode"); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+// SecurityWarnings returns non-fatal security advisories for the current configuration.
+func (c *Config) SecurityWarnings() []string {
+	var warnings []string
+
+	if c.Managed.Source.Type != "" && !c.Managed.Source.VerifySSL {
+		warnings = append(warnings,
+			"[managed.source].verify_ssl is false — TLS certificate verification "+
+				"disabled for all APIM connections. Set to true for production")
+	}
+
+	if c.Catalog.Datastore.SSLMode == "disable" &&
+		c.Catalog.Datastore.Host != "localhost" &&
+		c.Catalog.Datastore.Host != "127.0.0.1" {
+		warnings = append(warnings,
+			fmt.Sprintf("[catalog.datastore].ssl_mode is \"disable\" for host %q — "+
+				"database traffic is unencrypted. Set to \"require\" or stronger "+
+				"for non-localhost databases", c.Catalog.Datastore.Host))
+	}
+
+	return warnings
 }
 
 func validateRequired(value, field string) error {

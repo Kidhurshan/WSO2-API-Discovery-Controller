@@ -55,6 +55,11 @@ func main() {
 	logger := logging.New(cfg.Server)
 	defer logger.Sync()
 
+	// Security configuration warnings
+	for _, w := range cfg.SecurityWarnings() {
+		logger.Warnw("SECURITY", "detail", w)
+	}
+
 	// ── Stage 3: PostgreSQL (with startup retry) ──
 	ctx := context.Background()
 	db, err := store.ConnectWithRetry(ctx, cfg.Catalog.Datastore, logger)
@@ -97,11 +102,13 @@ func main() {
 		logger.Infow("APIM publisher client initialized",
 			"base_url", cfg.Managed.Source.BaseURL,
 			"auth_type", cfg.Managed.Source.Auth.AuthType,
+			"verify_ssl", cfg.Managed.Source.VerifySSL,
 		)
 		if cfg.ServiceCatalog.Enabled {
 			apimCatalog = apim.NewCatalogClient(cfg.Managed, auth)
 			logger.Infow("APIM catalog client initialized",
 				"base_url", cfg.Managed.Source.BaseURL,
+				"verify_ssl", cfg.Managed.Source.VerifySSL,
 			)
 		}
 	}
