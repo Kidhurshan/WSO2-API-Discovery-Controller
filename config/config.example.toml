@@ -1,10 +1,14 @@
+# WSO2 API Discovery Controller — Example Configuration
+
 [server]
-hostname = "adc-docker"
+hostname = "adc-host"
 mode = "standalone"
-health_port = 8090
 log_level = "info"
 log_format = "json"
 log_output = "stdout"
+log_max_size_mb = 50
+log_max_backups = 3
+log_max_age_days = 7
 
 [server.retention]
 discovered_retention = "30d"
@@ -13,14 +17,21 @@ unmanaged_retention = "90d"
 
 [discovery.source]
 type = "deepflow"
-server_ip = "deepflow.example.com"
+server_ip = "10.50.0.11"
 querier_port = 30617
 version = "v7.0"
 query_mode = "sql_api"
 
+[discovery.source.clickhouse]
+host = "10.50.0.11"
+port = 9000
+user = "default"
+password = ""
+database = "flow_log"
+
 [discovery.schedule]
-poll_interval = "2m"
-safety_lag = "1m"
+poll_interval = "5m"
+safety_lag = "2m"
 max_signatures_per_cycle = 1000
 
 [discovery.traffic_filter]
@@ -43,7 +54,7 @@ path_patterns = [
 ]
 path_exact = ["/", "/version", "/metrics"]
 excluded_ports = [8280, 8243, 9443, 9763]
-excluded_domains = ["169.254.169.254", "gateway.example.com"]
+excluded_domains = ["169.254.169.254"]
 excluded_agent_ids = []
 
 [discovery.normalization]
@@ -54,7 +65,9 @@ builtin_patterns = [
     "^[0-9]+$",
     "^[A-Za-z0-9_-]{20,}={0,2}$",
     "^[A-Z]{2,5}-[A-Z0-9-]{3,}$",
+    "^(?=.*[0-9])[a-zA-Z0-9]{8,}$",
 ]
+user_patterns = []
 exclude_patterns = [
     "^v?[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
     "^v[0-9]+$",
@@ -63,7 +76,7 @@ exclude_patterns = [
 
 [managed.source]
 type = "wso2_apim"
-base_url = "https://apim.example.com:9443"
+base_url = "https://10.50.0.10:9443"
 api_version = "v4"
 # SECURITY: verify_ssl = false disables TLS certificate verification for APIM.
 # Set to true for production. Only use false for self-signed certs in dev/test.
@@ -76,9 +89,13 @@ verify_ssl = false
 auth_type = "basic"
 username = "admin"
 password = "admin"
+client_id = ""
+client_secret = ""
+token_endpoint = "https://10.50.0.10:9443/oauth2/token"
+scopes = ["apim:api_view", "apim:service_catalog_view", "apim:service_catalog_create", "apim:service_catalog_update"]
 
 [managed.schedule]
-poll_interval = "3m"
+poll_interval = "10m"
 request_timeout = "30s"
 max_retries = 3
 page_size = 500
@@ -101,6 +118,7 @@ include_k8s_metadata = true
 include_legacy_metadata = true
 include_network_metadata = true
 include_sample_urls = true
+server_url_override = ""
 
 [service_catalog]
 enabled = true
@@ -109,16 +127,12 @@ push_shadow = true
 push_drift = true
 re_push_deleted = false
 
-[service_catalog.reconciliation]
-enabled = false
-cleanup_unowned = false
-
 [catalog.datastore]
 type = "postgresql"
-host = "postgres"
+host = "localhost"
 port = 5432
-database = "${POSTGRES_DB}"
-user = "${POSTGRES_USER}"
-password = "${POSTGRES_PASSWORD}"
+database = "adc"
+user = "adc_user"
+password = "adc_password"
 max_connections = 10
 ssl_mode = "disable"

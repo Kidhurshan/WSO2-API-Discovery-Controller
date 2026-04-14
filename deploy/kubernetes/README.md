@@ -127,8 +127,8 @@ kubectl -n adc-system rollout restart deploy/postgres
 kubectl -n adc-system rollout restart deploy/adc
 ```
 
-> **Production**: change the default `adc_password` before exposing the cluster
-> beyond a trusted boundary.
+> **Production**: change the default `CHANGE-ME-BEFORE-DEPLOYING` placeholder password
+> in `postgres-secret.yaml` before exposing the cluster beyond a trusted boundary.
 
 ---
 
