@@ -276,8 +276,8 @@ base_url = ""
 # Default: "v4"
 api_version = "v4"
 
-# Optional. Whether to verify TLS certificates when connecting to APIM.
-# Set to false only for self-signed certificates in development/testing.
+# SECURITY: verify_ssl = false disables TLS certificate verification for APIM.
+# Set to true for production. Only use false for self-signed certs in dev/test.
 # Default: false
 verify_ssl = false
 

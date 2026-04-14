@@ -65,6 +65,8 @@ exclude_patterns = [
 type = "wso2_apim"
 base_url = "https://apim.example.com:9443"
 api_version = "v4"
+# SECURITY: verify_ssl = false disables TLS certificate verification for APIM.
+# Set to true for production. Only use false for self-signed certs in dev/test.
 verify_ssl = false
 
 [managed.source.auth]

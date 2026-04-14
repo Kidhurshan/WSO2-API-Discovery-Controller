@@ -56,6 +56,8 @@ data:
     type = ""
     base_url = ""
     api_version = "v4"
+    # SECURITY: verify_ssl = false disables TLS certificate verification for APIM.
+    # Set to true for production. Only use false for self-signed certs in dev/test.
     verify_ssl = false
 
     [managed.source.auth]
