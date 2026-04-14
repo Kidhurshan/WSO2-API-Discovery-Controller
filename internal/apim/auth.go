@@ -115,9 +115,15 @@ func (o *oauth2Auth) refreshToken() error {
 		return fmt.Errorf("parse token response: %w", err)
 	}
 
+	if tokenResp.ExpiresIn <= 0 {
+		return fmt.Errorf("invalid token expiry: %d seconds", tokenResp.ExpiresIn)
+	}
+	buffer := 60
+	if tokenResp.ExpiresIn <= buffer {
+		buffer = tokenResp.ExpiresIn / 3
+	}
 	o.accessToken = tokenResp.AccessToken
-	// Buffer 60 seconds before actual expiry
-	o.expiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second)
+	o.expiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn-buffer) * time.Second)
 	return nil
 }
 
