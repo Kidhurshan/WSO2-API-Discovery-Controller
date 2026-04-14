@@ -203,6 +203,18 @@ func (e *Engine) runPhase(ctx context.Context, cycleID string, phase Phase) erro
 	return nil
 }
 
+// BreakerStatuses returns the current state of all circuit breakers.
+// Implements health.BreakerStatusProvider.
+func (e *Engine) BreakerStatuses() map[string]string {
+	statuses := make(map[string]string, len(e.breakers))
+	for name, cb := range e.breakers {
+		cb.mu.Lock()
+		statuses[name] = string(cb.State)
+		cb.mu.Unlock()
+	}
+	return statuses
+}
+
 func (e *Engine) shouldRunPhase2() bool {
 	if e.phase2LastRun.IsZero() {
 		return true

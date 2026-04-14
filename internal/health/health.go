@@ -12,20 +12,27 @@ import (
 	"github.com/wso2/adc/internal/store"
 )
 
+// BreakerStatusProvider exposes circuit breaker state without importing the engine package.
+type BreakerStatusProvider interface {
+	BreakerStatuses() map[string]string
+}
+
 // Server serves health check endpoints.
 type Server struct {
-	db     *store.DB
-	port   int
-	logger *logging.Logger
-	server *http.Server
+	db       *store.DB
+	port     int
+	logger   *logging.Logger
+	server   *http.Server
+	breakers BreakerStatusProvider
 }
 
 // New creates a new health server.
-func New(db *store.DB, port int, logger *logging.Logger) *Server {
+func New(db *store.DB, port int, logger *logging.Logger, breakers BreakerStatusProvider) *Server {
 	return &Server{
-		db:     db,
-		port:   port,
-		logger: logger,
+		db:       db,
+		port:     port,
+		logger:   logger,
+		breakers: breakers,
 	}
 }
 
@@ -79,6 +86,15 @@ func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
 		healthy = false
 	} else {
 		checks["postgresql"] = "ok"
+	}
+
+	if s.breakers != nil {
+		for name, state := range s.breakers.BreakerStatuses() {
+			checks["circuit_"+name] = state
+			if state == "open" {
+				healthy = false
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

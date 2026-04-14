@@ -142,13 +142,30 @@ func main() {
 		}
 	}
 
-	// ── Stage 8: Health server ──
-	healthSrv := health.New(db, cfg.Server.HealthPort, logger)
+	// ── Stage 8: Log disabled phases ──
+	if phases.Discovery == nil {
+		logger.Warnw("Phase 1 (Discovery) is DISABLED")
+	}
+	if phases.Managed == nil {
+		logger.Warnw("Phase 2 (Managed Sync) is DISABLED")
+	}
+	if !cfg.Comparison.Enabled {
+		logger.Warnw("Phase 3 (Comparison) is DISABLED")
+	}
+	if !cfg.SpecGeneration.Enabled {
+		logger.Warnw("Phase 4 (Spec Generation) is DISABLED")
+	}
+	if !cfg.ServiceCatalog.Enabled {
+		logger.Warnw("Phase 5 (Catalog Push) is DISABLED")
+	}
+
+	// ── Stage 9: Engine (created before health server so breaker status is available) ──
+	eng := engine.New(cfg, phases, repos, logger)
+
+	// ── Stage 10: Health server ──
+	healthSrv := health.New(db, cfg.Server.HealthPort, logger, eng)
 	healthSrv.Start()
 	defer healthSrv.Stop()
-
-	// ── Stage 9: Engine ──
-	eng := engine.New(cfg, phases, repos, logger)
 
 	// ── Graceful shutdown ──
 	ctx, cancel := context.WithCancel(ctx)
