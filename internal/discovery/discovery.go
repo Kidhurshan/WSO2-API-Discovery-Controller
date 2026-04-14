@@ -100,11 +100,15 @@ func (p *Phase) Run(ctx context.Context, cycleID string) error {
 	log.Infow("Step 5 complete", "enriched", len(records))
 
 	// Step 5g: Batch upsert to PostgreSQL
-	upserted, err := p.repos.Discovered.BatchUpsert(ctx, records)
+	upserted, failed, err := p.repos.Discovered.BatchUpsert(ctx, records)
 	if err != nil {
 		return fmt.Errorf("step 5g upsert: %w", err)
 	}
-	log.Infow("Step 5g upsert complete", "upserted", upserted)
+	if failed > 0 {
+		log.Warnw("Step 5g upsert had failures", "upserted", upserted, "failed", failed)
+	} else {
+		log.Infow("Step 5g upsert complete", "upserted", upserted)
+	}
 
 	// Step 6: Advance watermark
 	var totalHits int64

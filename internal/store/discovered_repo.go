@@ -20,23 +20,31 @@ func NewDiscoveredRepo(db *DB, logger *logging.Logger) *DiscoveredRepo {
 }
 
 // BatchUpsert inserts or updates discovered API records.
-// Returns the number of records upserted.
-func (r *DiscoveredRepo) BatchUpsert(ctx context.Context, records []*models.FusedRecord) (int, error) {
+// Returns (upserted, failed, error). Individual row failures are logged
+// and skipped so the batch continues; the caller should check failed > 0.
+func (r *DiscoveredRepo) BatchUpsert(ctx context.Context, records []*models.FusedRecord) (int, int, error) {
 	if len(records) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	count := 0
+	failed := 0
 	for _, rec := range records {
 		err := r.upsertOne(ctx, rec)
 		if err != nil {
-			// Log and continue — don't fail the entire batch
+			r.logger.Warnw("upsert failed, skipping record",
+				"service_key", rec.ServiceKey,
+				"method", rec.HTTPMethod,
+				"path", rec.ResourcePath,
+				"error", err,
+			)
+			failed++
 			continue
 		}
 		count++
 	}
 
-	return count, nil
+	return count, failed, nil
 }
 
 func (r *DiscoveredRepo) upsertOne(ctx context.Context, rec *models.FusedRecord) error {
