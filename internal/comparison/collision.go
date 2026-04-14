@@ -1,6 +1,7 @@
 package comparison
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/wso2/adc/internal/logging"
@@ -134,13 +135,14 @@ func ResolveCollisions(
 			}
 		}
 
-		// Check for tie
+		// Check for tie — sort for deterministic resolution across cycles
 		var tiedKeys []string
 		for sk, s := range scores {
 			if s == maxScore {
 				tiedKeys = append(tiedKeys, sk)
 			}
 		}
+		sort.Strings(tiedKeys)
 
 		winner := ""
 		if len(tiedKeys) == 1 {
