@@ -107,7 +107,7 @@ func main() {
 	}
 
 	// ── Stage 6: Build repositories ──
-	repos := store.NewRepositories(db)
+	repos := store.NewRepositories(db, logger)
 
 	// ── Stage 7: Build phases ──
 	phases := engine.Phases{}

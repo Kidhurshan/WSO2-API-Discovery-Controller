@@ -6,17 +6,19 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/wso2/adc/internal/logging"
 	"github.com/wso2/adc/internal/models"
 )
 
 // UnmanagedRepo handles adc_unmanaged_apis CRUD operations.
 type UnmanagedRepo struct {
-	db *DB
+	db     *DB
+	logger *logging.Logger
 }
 
 // NewUnmanagedRepo creates a new UnmanagedRepo.
-func NewUnmanagedRepo(db *DB) *UnmanagedRepo {
-	return &UnmanagedRepo{db: db}
+func NewUnmanagedRepo(db *DB, logger *logging.Logger) *UnmanagedRepo {
+	return &UnmanagedRepo{db: db, logger: logger}
 }
 
 // Upsert inserts or updates an unmanaged API entry.
@@ -113,9 +115,13 @@ func (r *UnmanagedRepo) GetDetectedGroups(ctx context.Context) ([]ServiceGroup, 
 	for rows.Next() {
 		var g ServiceGroup
 		if err := rows.Scan(&g.ServiceKey, &g.Classification, &g.ManagedAPIID); err != nil {
+			r.logger.Warnw("row scan error in GetDetectedGroups, skipping", "error", err)
 			continue
 		}
 		groups = append(groups, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration in GetDetectedGroups: %w", err)
 	}
 	return groups, nil
 }
@@ -208,9 +214,13 @@ ORDER BY u.resource_path, u.http_method`
 			&op.FirstSeenAt, &op.LastSeenAt,
 			&op.ParentAPIName, &op.ParentAPIVersion,
 		); err != nil {
+			r.logger.Warnw("row scan error in GetGroupOperations, skipping", "error", err)
 			continue
 		}
 		ops = append(ops, op)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration in GetGroupOperations: %w", err)
 	}
 	return ops, nil
 }
@@ -264,9 +274,13 @@ func (r *UnmanagedRepo) GetSpecGeneratedGroups(ctx context.Context) ([]CatalogPu
 		var g CatalogPushGroup
 		if err := rows.Scan(&g.ServiceKey, &g.Classification, &g.ManagedAPIID,
 			&g.CatalogServiceID, &g.OpenAPISpec); err != nil {
+			r.logger.Warnw("row scan error in GetSpecGeneratedGroups, skipping", "error", err)
 			continue
 		}
 		groups = append(groups, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration in GetSpecGeneratedGroups: %w", err)
 	}
 	return groups, nil
 }
@@ -324,9 +338,13 @@ func (r *UnmanagedRepo) TrackedCatalogServiceIDs(ctx context.Context) (map[strin
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
+			r.logger.Warnw("row scan error in TrackedCatalogServiceIDs, skipping", "error", err)
 			continue
 		}
 		ids[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration in TrackedCatalogServiceIDs: %w", err)
 	}
 	return ids, nil
 }
@@ -347,6 +365,7 @@ func (r *UnmanagedRepo) CountByClassification(ctx context.Context) (shadow, drif
 		var cls string
 		var count int
 		if err := rows.Scan(&cls, &count); err != nil {
+			r.logger.Warnw("row scan error in CountByClassification, skipping", "error", err)
 			continue
 		}
 		switch cls {
@@ -355,6 +374,9 @@ func (r *UnmanagedRepo) CountByClassification(ctx context.Context) (shadow, drif
 		case "DRIFT":
 			drift = count
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, fmt.Errorf("row iteration in CountByClassification: %w", err)
 	}
 	return shadow, drift, nil
 }

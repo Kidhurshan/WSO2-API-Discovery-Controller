@@ -4,17 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/wso2/adc/internal/logging"
 	"github.com/wso2/adc/internal/models"
 )
 
 // ManagedOpsRepo handles adc_managed_api_operations queries.
 type ManagedOpsRepo struct {
-	db *DB
+	db     *DB
+	logger *logging.Logger
 }
 
 // NewManagedOpsRepo creates a new ManagedOpsRepo.
-func NewManagedOpsRepo(db *DB) *ManagedOpsRepo {
-	return &ManagedOpsRepo{db: db}
+func NewManagedOpsRepo(db *DB, logger *logging.Logger) *ManagedOpsRepo {
+	return &ManagedOpsRepo{db: db, logger: logger}
 }
 
 // GetByAPIMApiID returns all active operations for a given APIM API ID.
@@ -33,9 +35,13 @@ func (r *ManagedOpsRepo) GetByAPIMApiID(ctx context.Context, apimApiID string) (
 	for rows.Next() {
 		var op models.ManagedAPIOperation
 		if err := rows.Scan(&op.ID, &op.APIMApiID, &op.HTTPMethod, &op.RawTarget, &op.NormalizedTarget, &op.MatchPath); err != nil {
+			r.logger.Warnw("row scan error in GetByAPIMApiID, skipping", "error", err)
 			continue
 		}
 		ops = append(ops, op)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration in GetByAPIMApiID: %w", err)
 	}
 	return ops, nil
 }
@@ -61,10 +67,14 @@ func (r *ManagedOpsRepo) GetAllActive(ctx context.Context) ([]models.ManagedAPIO
 		var managedAPIPK int
 		if err := rows.Scan(&op.ID, &op.APIMApiID, &op.HTTPMethod, &op.RawTarget,
 			&op.NormalizedTarget, &op.MatchPath, &managedAPIPK); err != nil {
+			r.logger.Warnw("row scan error in GetAllActive, skipping", "error", err)
 			continue
 		}
 		op.ManagedAPIPK = managedAPIPK
 		ops = append(ops, op)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration in GetAllActive: %w", err)
 	}
 	return ops, nil
 }

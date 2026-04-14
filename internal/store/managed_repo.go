@@ -5,17 +5,19 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/wso2/adc/internal/logging"
 	"github.com/wso2/adc/internal/models"
 )
 
 // ManagedRepo handles adc_managed_apis CRUD operations.
 type ManagedRepo struct {
-	db *DB
+	db     *DB
+	logger *logging.Logger
 }
 
 // NewManagedRepo creates a new ManagedRepo.
-func NewManagedRepo(db *DB) *ManagedRepo {
-	return &ManagedRepo{db: db}
+func NewManagedRepo(db *DB, logger *logging.Logger) *ManagedRepo {
+	return &ManagedRepo{db: db, logger: logger}
 }
 
 // GetByAPIMApiID looks up a managed API by its APIM API ID.
@@ -128,11 +130,15 @@ func (r *ManagedRepo) MarkDeleted(ctx context.Context, currentAPIIDs map[string]
 	for rows.Next() {
 		var apimID string
 		if err := rows.Scan(&apimID); err != nil {
+			r.logger.Warnw("row scan error in MarkDeleted, skipping", "error", err)
 			continue
 		}
 		if !currentAPIIDs[apimID] {
 			toDelete = append(toDelete, apimID)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("row iteration in MarkDeleted: %w", err)
 	}
 
 	if len(toDelete) == 0 {

@@ -4,17 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/wso2/adc/internal/logging"
 	"github.com/wso2/adc/internal/models"
 )
 
 // DiscoveredRepo handles adc_discovered_apis CRUD operations.
 type DiscoveredRepo struct {
-	db *DB
+	db     *DB
+	logger *logging.Logger
 }
 
 // NewDiscoveredRepo creates a new DiscoveredRepo.
-func NewDiscoveredRepo(db *DB) *DiscoveredRepo {
-	return &DiscoveredRepo{db: db}
+func NewDiscoveredRepo(db *DB, logger *logging.Logger) *DiscoveredRepo {
+	return &DiscoveredRepo{db: db, logger: logger}
 }
 
 // BatchUpsert inserts or updates discovered API records.
@@ -133,9 +135,13 @@ func (r *DiscoveredRepo) GetAll(ctx context.Context) ([]models.DiscoveredAPI, er
 		var d models.DiscoveredAPI
 		if err := rows.Scan(&d.ID, &d.ServiceKey, &d.HTTPMethod, &d.ResourcePath,
 			&d.RequestDomain, &d.HostIP, &d.ServerPort, &d.HitCount); err != nil {
+			r.logger.Warnw("row scan error in GetAll, skipping", "error", err)
 			continue
 		}
 		apis = append(apis, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration in GetAll: %w", err)
 	}
 	return apis, nil
 }
