@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/wso2/adc/internal/config"
@@ -221,7 +222,9 @@ func joinProtocolsDoubleQuote(protocols []string) string {
 		if i > 0 {
 			result += ", "
 		}
-		result += `"` + p + `"`
+		escaped := strings.ReplaceAll(p, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+		result += `"` + escaped + `"`
 	}
 	return result
 }

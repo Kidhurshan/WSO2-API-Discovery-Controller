@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"time"
 
 	"github.com/wso2/adc/internal/config"
@@ -134,7 +135,7 @@ func (c *catalogClient) GetService(ctx context.Context, serviceID string) (strin
 
 // SearchByName searches for a catalog entry by name.
 func (c *catalogClient) SearchByName(ctx context.Context, name string) (string, error) {
-	path := fmt.Sprintf("/api/am/service-catalog/v1/services?name=%s&limit=1", name)
+	path := fmt.Sprintf("/api/am/service-catalog/v1/services?name=%s&limit=1", url.QueryEscape(name))
 	body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil, "")
 	if err != nil {
 		return "", fmt.Errorf("search by name %s: %w", name, err)
@@ -296,7 +297,7 @@ func (c *catalogClient) doRequest(ctx context.Context, method, path string, body
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httputil.ReadResponseBody(resp, 0)
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("read response: %w", err)
 	}

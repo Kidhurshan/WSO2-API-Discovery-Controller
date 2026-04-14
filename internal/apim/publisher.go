@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -141,7 +140,7 @@ func (c *publisherClient) doGet(ctx context.Context, path string) ([]byte, error
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := httputil.ReadResponseBody(resp, 0)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
