@@ -6,17 +6,19 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/wso2/adc/internal/logging"
 	"github.com/wso2/adc/internal/models"
 )
 
 // PipelineStateRepo handles adc_pipeline_state CRUD operations.
 type PipelineStateRepo struct {
-	db *DB
+	db     *DB
+	logger *logging.Logger
 }
 
 // NewPipelineStateRepo creates a new PipelineStateRepo.
-func NewPipelineStateRepo(db *DB) *PipelineStateRepo {
-	return &PipelineStateRepo{db: db}
+func NewPipelineStateRepo(db *DB, logger *logging.Logger) *PipelineStateRepo {
+	return &PipelineStateRepo{db: db, logger: logger}
 }
 
 // Get retrieves the pipeline state for the given pipeline name.

@@ -1,5 +1,7 @@
 package store
 
+import "github.com/wso2/adc/internal/logging"
+
 // Repositories aggregates all repository instances.
 type Repositories struct {
 	Discovered    *DiscoveredRepo
@@ -11,13 +13,13 @@ type Repositories struct {
 }
 
 // NewRepositories creates all repositories from a shared DB connection.
-func NewRepositories(db *DB) *Repositories {
+func NewRepositories(db *DB, logger *logging.Logger) *Repositories {
 	return &Repositories{
-		Discovered:    NewDiscoveredRepo(db),
-		Managed:       NewManagedRepo(db),
-		ManagedOps:    NewManagedOpsRepo(db),
-		Unmanaged:     NewUnmanagedRepo(db),
-		PipelineState: NewPipelineStateRepo(db),
+		Discovered:    NewDiscoveredRepo(db, logger),
+		Managed:       NewManagedRepo(db, logger),
+		ManagedOps:    NewManagedOpsRepo(db, logger),
+		Unmanaged:     NewUnmanagedRepo(db, logger),
+		PipelineState: NewPipelineStateRepo(db, logger),
 		db:            db,
 	}
 }

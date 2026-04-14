@@ -249,6 +249,21 @@ func matchRow(signatures []models.APISignature, row map[string]interface{}) int 
 	return -1
 }
 
+// isValidURLPath checks that a URL string contains only expected HTTP resource path characters.
+// This is a defense-in-depth measure against SQL injection via ClickHouse string interpolation.
+func isValidURLPath(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+			c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == ':' ||
+			c == '?' || c == '=' || c == '&' || c == '%' || c == '+' || c == '@' ||
+			c == '#' || c == ',' || c == ';' || c == ' ' || c == '[' || c == ']') {
+			return false
+		}
+	}
+	return true
+}
+
 func buildURLFilter(urls []string) string {
 	if len(urls) == 0 {
 		return `""`
@@ -258,6 +273,9 @@ func buildURLFilter(urls []string) string {
 	first := true
 	for _, u := range urls {
 		if unique[u] {
+			continue
+		}
+		if !isValidURLPath(u) {
 			continue
 		}
 		unique[u] = true

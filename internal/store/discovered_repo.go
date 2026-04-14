@@ -4,37 +4,47 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/wso2/adc/internal/logging"
 	"github.com/wso2/adc/internal/models"
 )
 
 // DiscoveredRepo handles adc_discovered_apis CRUD operations.
 type DiscoveredRepo struct {
-	db *DB
+	db     *DB
+	logger *logging.Logger
 }
 
 // NewDiscoveredRepo creates a new DiscoveredRepo.
-func NewDiscoveredRepo(db *DB) *DiscoveredRepo {
-	return &DiscoveredRepo{db: db}
+func NewDiscoveredRepo(db *DB, logger *logging.Logger) *DiscoveredRepo {
+	return &DiscoveredRepo{db: db, logger: logger}
 }
 
 // BatchUpsert inserts or updates discovered API records.
-// Returns the number of records upserted.
-func (r *DiscoveredRepo) BatchUpsert(ctx context.Context, records []*models.FusedRecord) (int, error) {
+// Returns (upserted, failed, error). Individual row failures are logged
+// and skipped so the batch continues; the caller should check failed > 0.
+func (r *DiscoveredRepo) BatchUpsert(ctx context.Context, records []*models.FusedRecord) (int, int, error) {
 	if len(records) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	count := 0
+	failed := 0
 	for _, rec := range records {
 		err := r.upsertOne(ctx, rec)
 		if err != nil {
-			// Log and continue — don't fail the entire batch
+			r.logger.Warnw("upsert failed, skipping record",
+				"service_key", rec.ServiceKey,
+				"method", rec.HTTPMethod,
+				"path", rec.ResourcePath,
+				"error", err,
+			)
+			failed++
 			continue
 		}
 		count++
 	}
 
-	return count, nil
+	return count, failed, nil
 }
 
 func (r *DiscoveredRepo) upsertOne(ctx context.Context, rec *models.FusedRecord) error {
@@ -133,9 +143,13 @@ func (r *DiscoveredRepo) GetAll(ctx context.Context) ([]models.DiscoveredAPI, er
 		var d models.DiscoveredAPI
 		if err := rows.Scan(&d.ID, &d.ServiceKey, &d.HTTPMethod, &d.ResourcePath,
 			&d.RequestDomain, &d.HostIP, &d.ServerPort, &d.HitCount); err != nil {
+			r.logger.Warnw("row scan error in GetAll, skipping", "error", err)
 			continue
 		}
 		apis = append(apis, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration in GetAll: %w", err)
 	}
 	return apis, nil
 }

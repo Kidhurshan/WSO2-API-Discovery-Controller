@@ -36,6 +36,7 @@ type Engine struct {
 	repos                *store.Repositories
 	logger               *logging.Logger
 	phase2LastRun        time.Time
+	phase2LastSuccess    time.Time
 	cleanupLastRun       time.Time
 	reconcileLastRun     time.Time
 	cleanup              *Cleanup
@@ -110,13 +111,19 @@ func (e *Engine) runCycle(ctx context.Context, trigger string) {
 			} else {
 				e.breakers["managed"].RecordSuccess()
 				e.phase2LastRun = time.Now()
+				e.phase2LastSuccess = time.Now()
 			}
 			phasesRun = append(phasesRun, "managed")
 		}
 	}
 
-	// Phase 3: Comparison (after Phase 2 has run at least once)
-	if e.phases.Comparison != nil && e.cfg.Comparison.Enabled && !e.phase2LastRun.IsZero() {
+	// Phase 3: Comparison (only when Phase 2 data is fresh)
+	managedInterval, _ := time.ParseDuration(e.cfg.Managed.Schedule.PollInterval)
+	if managedInterval == 0 {
+		managedInterval = 10 * time.Minute
+	}
+	phase2Fresh := !e.phase2LastSuccess.IsZero() && time.Since(e.phase2LastSuccess) < 3*managedInterval
+	if e.phases.Comparison != nil && e.cfg.Comparison.Enabled && phase2Fresh {
 		if err := e.runPhase(ctx, cycleID, e.phases.Comparison); err != nil {
 			e.logger.Errorw("Phase failed", "phase", "comparison", "cycle_id", cycleID, "error", err)
 		}
@@ -194,6 +201,18 @@ func (e *Engine) runPhase(ctx context.Context, cycleID string, phase Phase) erro
 		"duration_ms", duration,
 	)
 	return nil
+}
+
+// BreakerStatuses returns the current state of all circuit breakers.
+// Implements health.BreakerStatusProvider.
+func (e *Engine) BreakerStatuses() map[string]string {
+	statuses := make(map[string]string, len(e.breakers))
+	for name, cb := range e.breakers {
+		cb.mu.Lock()
+		statuses[name] = string(cb.State)
+		cb.mu.Unlock()
+	}
+	return statuses
 }
 
 func (e *Engine) shouldRunPhase2() bool {

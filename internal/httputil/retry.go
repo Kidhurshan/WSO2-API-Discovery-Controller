@@ -59,6 +59,11 @@ func DoWithRetry(ctx context.Context, client *http.Client, reqFactory func() (*h
 		}
 
 		if isRetryableStatus(resp.StatusCode) && attempt < cfg.MaxAttempts {
+			// Only retry idempotent methods (GET, HEAD, PUT, DELETE, OPTIONS).
+			// Non-idempotent methods like POST could create duplicate resources.
+			if !isIdempotentMethod(req.Method) {
+				return resp, nil
+			}
 			// Drain and close the body before retrying.
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
@@ -75,6 +80,15 @@ func DoWithRetry(ctx context.Context, client *http.Client, reqFactory func() (*h
 	}
 
 	return nil, fmt.Errorf("request failed after %d attempts: %w", cfg.MaxAttempts, lastErr)
+}
+
+// isIdempotentMethod returns true for HTTP methods that are safe to retry.
+func isIdempotentMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete, http.MethodOptions:
+		return true
+	}
+	return false
 }
 
 // isRetryableStatus returns true for transient HTTP status codes.

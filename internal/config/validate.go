@@ -85,6 +85,9 @@ func (c *Config) Validate() error {
 	if err := validateRequired(c.Catalog.Datastore.User, "[catalog.datastore].user"); err != nil {
 		return err
 	}
+	if err := validateRequired(c.Catalog.Datastore.Password, "[catalog.datastore].password"); err != nil {
+		return err
+	}
 
 	return nil
 }
