@@ -8,8 +8,7 @@
 #   cd deploy/docker/
 #   cp .env.external-db.example .env.external-db
 #   # Edit .env.external-db with your DB host + credentials
-#   cp ../../config/config.toml.external-db ./config.toml.external-db
-#   # Edit config.toml.external-db to enable the phases you want
+#   # Edit ../../config/config.toml to enable the phases you want
 #   docker compose -f docker-compose.external-db.yml up -d
 #   docker compose -f docker-compose.external-db.yml logs -f adc
 #
@@ -30,8 +29,10 @@ services:
     restart: unless-stopped
     env_file: .env.external-db
     volumes:
-      # Bind-mount the external-db config so edits don't require a rebuild.
-      - ./config.toml.external-db:/etc/adc/config.toml:ro
+      # Mount the single canonical config file. For external PostgreSQL the
+      # DB coordinates come from the env vars set in .env.external-db —
+      # config.toml itself is identical to the bundled-Postgres case.
+      - ../../config/config.toml:/etc/adc/config.toml:ro
     ports:
       - "8090:8090"
     healthcheck:
