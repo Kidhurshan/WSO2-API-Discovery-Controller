@@ -214,6 +214,17 @@ func Load(path string) (*Config, error) {
 	// patterns containing the end-of-string anchor `$` continue to work.
 	expanded := expandEnvVars(string(data))
 
+	// Fail fast if the deployment wrapper forgot to set an env var referenced
+	// by the config. Without this, a literal "${POSTGRES_HOST}" would pass
+	// validateRequired and only surface as an opaque DNS error at connect time.
+	if missing := unexpandedEnvVars(expanded); len(missing) > 0 {
+		return nil, fmt.Errorf(
+			"config file %s references environment variables that are not set: %v — "+
+				"set these variables in your deployment (systemd Environment=, docker-compose env_file, "+
+				"or Kubernetes Secret/env), or replace the ${VAR} placeholders in the file with literal values",
+			path, missing)
+	}
+
 	var cfg Config
 	if err := toml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("parse config file %s: %w", path, err)

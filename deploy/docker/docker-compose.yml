@@ -48,8 +48,9 @@ services:
         condition: service_healthy
     env_file: .env
     volumes:
-      # Bind-mount the docker-tuned config so edits don't require a rebuild.
-      - ./config.toml:/etc/adc/config.toml:ro
+      # Mount the single canonical config file shared by all deployment
+      # methods. Edits take effect on next `docker compose restart adc`.
+      - ../../config/config.toml:/etc/adc/config.toml:ro
     ports:
       - "8090:8090"
     healthcheck:

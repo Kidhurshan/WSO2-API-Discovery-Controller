@@ -1,12 +1,21 @@
 # ============================================================================
-#  WSO2 API Discovery Controller (ADC) — Configuration Template
+#  WSO2 API Discovery Controller (ADC) — Configuration
 # ============================================================================
 #
-#  Copy this file to /etc/adc/config.toml and edit to match your environment.
+#  This is the SINGLE configuration file for ADC. All deployment methods
+#  (VM, Docker, Kubernetes) read from this file. Edit it once for your
+#  environment; your install method loads it automatically.
 #
-#  Usage:
-#    adc --config /etc/adc/config.toml
-#    adc --validate --config /etc/adc/config.toml   (dry-run config check)
+#  Install flow:
+#    1. Edit this file for your environment (DeepFlow, APIM, phases).
+#    2. Run the install command for your platform:
+#         VM:         sudo ./deploy/systemd/install.sh
+#         Docker:     cd deploy/docker && docker compose up -d
+#         Kubernetes: ./deploy/kubernetes/install.sh
+#
+#  Platform-varying values use ${VAR} env-var interpolation — the install
+#  method supplies them. Do NOT edit the ${VAR} placeholders unless you are
+#  switching to external PostgreSQL (see [catalog.datastore] below).
 #
 #  Durations use Go format: "5m" (minutes), "30s" (seconds), "1h" (hours),
 #  "7d" (days — ADC extension, not standard Go).
@@ -41,10 +50,11 @@
 # Default: OS hostname
 hostname = ""
 
-# REQUIRED. Deployment mode.
-# Options: "standalone" (VM/bare-metal), "kubernetes" (enables leader election)
-# Default: "standalone"
-mode = "standalone"
+# REQUIRED. Deployment mode. Set by your install method — DO NOT edit.
+#   VM/systemd, Docker Compose: ADC_MODE=standalone
+#   Kubernetes:                 ADC_MODE=kubernetes (enables leader election)
+# Options: "standalone", "kubernetes"
+mode = "${ADC_MODE}"
 
 # Optional. Port for /healthz and /readyz endpoints.
 # Default: 8090
@@ -467,26 +477,28 @@ cleanup_unowned = false
 #  DATABASE — PostgreSQL connection (REQUIRED, auto-provisioned by default)
 # ──────────────────────────────────────────────────────────────────────────────
 #
-#  ADC stores all state in PostgreSQL and ships with a bundled PostgreSQL by
-#  default — you don't need to set up the database manually.
+#  ADC ships with BUNDLED PostgreSQL by default — you don't need to set up the
+#  database manually. The install method handles it:
 #
-#    • VM install:      `sudo ./deploy/systemd/install.sh` installs PostgreSQL
-#                       locally and creates the adc database with a random
-#                       password (patched into this file automatically).
-#    • Kubernetes:      `kubectl apply -k deploy/kubernetes/` deploys a
-#                       postgres pod alongside ADC in the adc-system namespace.
-#    • Docker Compose:  `docker compose up -d` runs postgres + adc together.
+#    • Kubernetes:   postgres pod deployed alongside ADC in adc-system namespace
+#    • Docker:       postgres container runs in the same compose network
+#    • VM/systemd:   install.sh installs PostgreSQL locally
 #
-#  In all three modes, ADC's auto-migration creates the schema on first
-#  startup — the bundled PostgreSQL ships only an empty database.
+#  For the BUNDLED case, do NOT edit the ${VAR} placeholders below — your
+#  install method supplies POSTGRES_HOST / POSTGRES_DB / POSTGRES_USER /
+#  POSTGRES_PASSWORD via environment variables or a Secret.
 #
-#  TO USE YOUR OWN POSTGRESQL (RDS, CloudSQL, on-prem, etc.):
-#    1. Read docs/external-postgres.md for setup steps and required permissions
-#    2. Or copy config/config.toml.external-db as a starting template
-#    3. Set host/port/database/user/password below to your DB's coordinates
-#    4. Set ssl_mode = "require" (or stronger) for cloud DBs
-#    5. K8s users: remove the postgres-* resources from kustomization.yaml
-#    6. VM users: run `install.sh --external-db` (skips bundled PostgreSQL)
+#  TO USE YOUR OWN EXTERNAL PostgreSQL (RDS, CloudSQL, on-prem, etc.):
+#    1. Replace ${POSTGRES_HOST} with your DB hostname (e.g., "db.example.com")
+#    2. Replace ${POSTGRES_DB}, ${POSTGRES_USER}, ${POSTGRES_PASSWORD} with
+#       literal values — or keep the ${VAR} form and set the env vars in your
+#       deployment (preferred for secret hygiene)
+#    3. Set ssl_mode = "require" (or stronger) for cloud/remote DBs
+#    4. Remove the bundled PostgreSQL from your deployment:
+#         Kubernetes: delete postgres-* lines from deploy/kubernetes/kustomization.yaml
+#         Docker:     use deploy/docker/docker-compose.external-db.yml
+#         VM:         install.sh --external-db
+#    See docs/external-postgres.md for the full external-DB guide.
 
 [catalog.datastore]
 
@@ -494,12 +506,8 @@ cleanup_unowned = false
 type = "postgresql"
 
 # REQUIRED. PostgreSQL server hostname or IP address.
-# Bundled defaults:
-#   VM install:      "localhost"
-#   Kubernetes:      "postgres.adc-system" (overridden by K8s configmap)
-#   Docker Compose:  "postgres" (overridden by docker config)
-# For external PostgreSQL, set this to your DB endpoint.
-host = "localhost"
+# Bundled: supplied by install method. External: set to your DB endpoint.
+host = "${POSTGRES_HOST}"
 
 # Optional. PostgreSQL server port.
 # Default: 5432
@@ -507,19 +515,19 @@ port = 5432
 
 # REQUIRED. Database name. Auto-created by all bundled install methods.
 # For external DB, create it manually with: CREATE DATABASE adc;
-database = "adc"
+database = "${POSTGRES_DB}"
 
 # REQUIRED. Database user. Must have CREATE TABLE and full CRUD permissions
 # (auto-migration creates tables on first startup).
 # Bundled installs auto-create this user. For external DB, create with:
 #   CREATE USER adc_user WITH PASSWORD 'your_password';
 #   GRANT ALL PRIVILEGES ON DATABASE adc TO adc_user;
-user = "adc_user"
+user = "${POSTGRES_USER}"
 
 # REQUIRED. Database password.
-# install.sh randomizes this on VM installs. K8s/Docker use a Secret/env var.
-# CHANGE this default if exposing the bundled DB beyond localhost.
-password = "adc_password"
+# Bundled: supplied via Secret (K8s) or .env (Docker) or install.sh (VM).
+# External: replace with literal value OR keep ${VAR} and set the env var.
+password = "${POSTGRES_PASSWORD}"
 
 # Optional. Maximum number of connections in the pool.
 # Default: 10

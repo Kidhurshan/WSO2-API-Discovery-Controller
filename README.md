@@ -67,20 +67,24 @@ docker compose logs -f adc
 ```
 
 ADC is now reachable at `http://localhost:8090/healthz`. All five pipeline
-phases are **disabled** out of the box — copy the section(s) you want to
-enable from [`config/config.toml`](config/config.toml) into
-`deploy/docker/config.toml` and `docker compose restart adc`.
+phases are **disabled** out of the box — edit [`config/config.toml`](config/config.toml)
+to enable the sections you want, then `docker compose restart adc`.
 
 For VM and Kubernetes deployments, see the [Deployment](#deployment) section below.
 
 ## Configuration
 
-ADC uses a single TOML configuration file. There are two canonical templates:
+ADC uses a **single canonical TOML file** — [`config/config.toml`](config/config.toml) —
+that drives every deployment mode (Docker, Kubernetes, systemd). Edit this one
+file and the install wrapper for your target (compose / kustomize / install.sh)
+feeds it to ADC without copying or modification.
 
-- [`config/config.toml`](config/config.toml) — bundled-PostgreSQL template (default)
-- [`config/config.toml.external-db`](config/config.toml.external-db) — external-PostgreSQL template
+Per-deployment values (database host, ADC mode) are supplied via environment
+variables the wrapper sets (`.env`, K8s env, systemd `Environment=`), so the
+TOML file stays identical across modes. To switch to an external PostgreSQL,
+follow the comment block above `[catalog.datastore]` in `config.toml`.
 
-Both files document every section. Sections:
+Sections:
 
 | Section | Purpose |
 |---------|---------|
@@ -124,14 +128,18 @@ docker compose -f docker-compose.external-db.yml up -d   # external DB
 
 ```bash
 # 1. Set a strong password in deploy/kubernetes/postgres-secret.yaml
-# 2. Apply via kustomize (orders namespace → secret → pvc → postgres → adc)
-kubectl apply -k deploy/kubernetes/
+# 2. Install (wrapper for `kubectl kustomize | kubectl apply -f -`)
+./deploy/kubernetes/install.sh
 
 # Watch
 kubectl -n adc-system get pods -w
 ```
 
-To use an existing PostgreSQL, edit `deploy/kubernetes/adc-configmap.yaml` with your DB host/port and remove the `postgres-*` resources from `kustomization.yaml`.
+The ConfigMap is generated from [`config/config.toml`](config/config.toml) by
+kustomize's `configMapGenerator`, so edits to the canonical file trigger a
+deterministic rolling restart on the next `install.sh` run. To use an existing
+PostgreSQL, follow the external-DB comment in `config/config.toml` and remove
+the `postgres-*` resources from `kustomization.yaml`.
 
 ### VM / Bare Metal (systemd)
 
@@ -202,20 +210,18 @@ internal/
 └── store/                        PostgreSQL repositories (repository pattern)
 schema/migrations/                DDL migration files (auto-applied)
 config/
-├── config.toml                   Bundled-PostgreSQL config template
-└── config.toml.external-db       External-PostgreSQL config template
+└── config.toml                   Canonical config — single source for all deploy modes
 deploy/
 ├── docker/                       Docker Compose (bundled + external-db variants)
 │   ├── Dockerfile                Multi-stage Docker build
-│   ├── docker-compose.yml        Bundled (postgres:17 + adc)
+│   ├── docker-compose.yml        Bundled (postgres:17 + adc); mounts config/config.toml
 │   ├── docker-compose.external-db.yml   External-DB variant (adc only)
-│   ├── config.toml               Docker-tuned bundled config
-│   ├── config.toml.external-db   Docker-tuned external-db config
 │   └── README.md
 ├── kubernetes/                   K8s kustomize manifests (flat naming)
-│   ├── adc-*.yaml                Namespace, ConfigMap, Deployment, Service, SA
+│   ├── install.sh                Wrapper: kubectl kustomize | kubectl apply -f -
+│   ├── adc-*.yaml                Namespace, Deployment, Service, SA
 │   ├── postgres-*.yaml           Bundled postgres Secret, PVC, Deployment, Service
-│   ├── kustomization.yaml        Apply order + labels
+│   ├── kustomization.yaml        Generates ConfigMap from ../../config/config.toml
 │   └── README.md
 └── systemd/                      VM / bare-metal install
     ├── adc.service               systemd unit

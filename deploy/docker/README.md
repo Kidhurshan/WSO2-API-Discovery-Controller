@@ -21,13 +21,17 @@ Kubernetes and systemd deployments — only the surrounding wiring differs.
 | `Dockerfile`                      | Multi-stage build (golang:1.25 → distroless static)                |
 | `docker-compose.yml`              | Bundled topology (postgres:17-alpine + adc).                       |
 | `docker-compose.external-db.yml`  | External-DB topology (adc only).                                   |
-| `config.toml`                     | Docker-tuned config for bundled mode. Mounted into adc.            |
-| `config.toml.external-db`         | Docker-tuned config for external mode. Mounted into adc.           |
 | `.env.example`                    | Credentials template for bundled mode. **Copy to `.env`**.          |
 | `.env.external-db.example`        | Credentials template for external mode. **Copy to `.env.external-db`**. |
 | `README.md`                       | This file.                                                         |
 
 `.env` and `.env.external-db` are gitignored — never commit them.
+
+The ADC config is **not** in this directory. Both compose files bind-mount
+the single canonical [`config/config.toml`](../../config/config.toml) at
+the repo root into `/etc/adc/config.toml`. Edit that one file and
+`docker compose restart adc` — the same file drives the VM and Kubernetes
+deployments too.
 
 ---
 
@@ -99,8 +103,9 @@ cd deploy/docker/
 cp .env.external-db.example .env.external-db
 # Edit .env.external-db with your real DB host, port, db, user, password
 
-# 2. (Optional) Edit config.toml.external-db to enable phases —
-#    by default ssl_mode = "require" and max_connections = 20.
+# 2. (Optional) Edit ../../config/config.toml to enable phases or tune
+#    datastore settings. For external DBs, set ssl_mode = "require" in
+#    [catalog.datastore]; POSTGRES_HOST is supplied by .env.external-db.
 
 # 3. Start ADC
 docker compose -f docker-compose.external-db.yml up -d
@@ -121,10 +126,10 @@ GRANT ALL ON SCHEMA public TO adc_user;   -- PostgreSQL 15+ requires this
 
 Then put `adc`, `adc_user`, and the password into `.env.external-db`.
 
-### `PGHOST` gotchas
+### `POSTGRES_HOST` gotchas
 
-`PGHOST` runs **inside the adc container**, not on your host. The
-following will NOT work:
+`POSTGRES_HOST` resolves **inside the adc container**, not on your host.
+The following will NOT work:
 
 | Value                  | Outcome                                                |
 |------------------------|--------------------------------------------------------|
@@ -133,7 +138,7 @@ following will NOT work:
 
 Use one of these instead:
 
-| Where postgres is running        | Recommended `PGHOST`                                  |
+| Where postgres is running        | Recommended `POSTGRES_HOST`                           |
 |----------------------------------|-------------------------------------------------------|
 | Cloud DB (AWS/Azure/GCP)         | The DB's public hostname                              |
 | On-prem on a different machine   | LAN hostname or IP                                    |
@@ -144,33 +149,22 @@ Use one of these instead:
 
 ## Enabling pipeline phases
 
-By design, both `config.toml` and `config.toml.external-db` in this
-directory contain **only** the `[catalog.datastore]` section. Every other
-ADC option falls back to its default. This keeps the docker-specific
-config tiny and obvious.
+All pipeline phases are disabled by default. To enable one, edit the
+canonical [`../../config/config.toml`](../../config/config.toml) at the
+repo root — for example, set `enabled = true` under `[comparison]` or
+fill in the `[managed.source]` section for Phase 2 — then restart ADC:
 
-To enable a phase:
+```bash
+# bundled
+docker compose restart adc
 
-1. Open `../../config/config.toml` (the canonical, fully documented
-   template).
-2. Copy the section(s) you want — for example, `[discovery.source]`,
-   `[discovery.source.clickhouse]`, `[discovery.schedule]`,
-   `[discovery.traffic_filter]`, `[discovery.noise_filter]`,
-   `[discovery.normalization]` for Phase 1.
-3. Paste them into `deploy/docker/config.toml` (or
-   `config.toml.external-db`) **above** the `[catalog.datastore]` section.
-4. Edit values for your environment.
-5. Restart ADC:
-
-   ```bash
-   # bundled
-   docker compose restart adc
-
-   # external
-   docker compose -f docker-compose.external-db.yml restart adc
-   ```
+# external
+docker compose -f docker-compose.external-db.yml restart adc
+```
 
 The bind-mount means edits are picked up by `restart` — no rebuild needed.
+The same file drives the Kubernetes and systemd deployments, so any change
+you make here applies everywhere once re-deployed.
 
 ---
 
@@ -252,7 +246,7 @@ traefik service to `adc-net` rather than publishing additional ports.
 | `adc` exits immediately, logs show `parse config file` | A `${VAR}` reference is unset                                 | Verify `.env` contains `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`                   |
 | `password authentication failed for user "adc_user"`   | Bundled: `.env` was edited *after* first init                 | See "Credential rotation" above                                                              |
 | `dial tcp postgres:5432: i/o timeout` (bundled)        | `pg_isready` healthcheck never went green                     | `docker compose logs postgres` — usually a permission/PVC issue                              |
-| `dial tcp <host>:5432: connect: connection refused` (external) | `PGHOST` is `localhost`/`127.0.0.1`, or DB not reachable from container | Use the host's LAN IP / `host.docker.internal` / cloud hostname                              |
+| `dial tcp <host>:5432: connect: connection refused` (external) | `POSTGRES_HOST` is `localhost`/`127.0.0.1`, or DB not reachable from container | Use the host's LAN IP / `host.docker.internal` / cloud hostname                              |
 | `adc` healthcheck stuck in `(starting)` for >2 minutes | Migrations failed or DB unreachable                           | `docker compose logs adc` for the actual error                                               |
 | Port 8090 already in use                               | Another process bound to 8090 on the host                     | Edit the `ports:` line to remap (e.g., `"18090:8090"`)                                       |
 | Want to inspect the database directly                  | —                                                              | `docker compose exec postgres psql -U adc_user -d adc`                                       |

@@ -31,9 +31,17 @@ spec:
         - name: health
           containerPort: 8090
           protocol: TCP
-        # Inject DB credentials from postgres-secret. ADC's config loader
-        # expands ${POSTGRES_DB}, ${POSTGRES_USER}, ${POSTGRES_PASSWORD}
-        # references in adc-configmap.yaml against this environment.
+        # Inject DB credentials (secret) + deployment-mode vars (non-secret).
+        # ADC's config loader expands ${VAR} references in /etc/adc/config.toml
+        # against this environment at startup.
+        env:
+        # Deployment mode for K8s — enables leader election.
+        - name: ADC_MODE
+          value: "kubernetes"
+        # In-cluster DNS name for the bundled Postgres service. To use
+        # external PostgreSQL, override via a kustomize overlay or patch.
+        - name: POSTGRES_HOST
+          value: "postgres.adc-system"
         envFrom:
         - secretRef:
             name: postgres-secret

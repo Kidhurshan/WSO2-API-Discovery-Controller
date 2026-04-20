@@ -370,9 +370,15 @@ PY
 
 # Validate the config before installing the unit. ADC's --validate flag
 # loads, expands env vars, parses, applies defaults, and runs Validate().
+# ADC_MODE and POSTGRES_HOST match what adc.service supplies at runtime via
+# Environment=, so --validate sees the same env the running service will.
 echo "[install] validating config..."
 if ! sudo -u "$ADC_USER" \
-        env POSTGRES_DB="$DB_NAME" POSTGRES_USER="$DB_USER" POSTGRES_PASSWORD="$DB_PASSWORD" \
+        env ADC_MODE=standalone \
+            POSTGRES_HOST="$DB_HOST" \
+            POSTGRES_DB="$DB_NAME" \
+            POSTGRES_USER="$DB_USER" \
+            POSTGRES_PASSWORD="$DB_PASSWORD" \
         "$INSTALL_BIN" --config "$CONFIG_DEST" --validate; then
     echo "ERROR: config validation failed — see error above." >&2
     exit 1

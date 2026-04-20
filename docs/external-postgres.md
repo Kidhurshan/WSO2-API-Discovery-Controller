@@ -239,9 +239,11 @@ Minimum recommendation: **daily `pg_dump` to off-host storage**.
 
 ### Kubernetes
 
-1. Edit `deploy/kubernetes/adc-configmap.yaml`:
-   - Set `[catalog.datastore].host` to your external DB hostname
-   - Set `[catalog.datastore].user`, `password`, `ssl_mode = "require"`
+1. Edit [`config/config.toml`](../config/config.toml) at the repo root — follow
+   the `[catalog.datastore]` comment block: keep the `${POSTGRES_HOST}` /
+   `${POSTGRES_DB}` / `${POSTGRES_USER}` / `${POSTGRES_PASSWORD}` placeholders
+   (the K8s Deployment supplies them via `env` + `envFrom`), and set
+   `ssl_mode = "require"` (or stronger).
 2. Edit `deploy/kubernetes/kustomization.yaml` and remove these from `resources:`:
    ```
    - postgres-secret.yaml
@@ -249,9 +251,15 @@ Minimum recommendation: **daily `pg_dump` to off-host storage**.
    - postgres-deployment.yaml
    - postgres-service.yaml
    ```
-3. (Recommended) Move the DB password into a separate Secret instead of inlining it in the configmap. Reference it via `envFrom` in `adc-deployment.yaml`.
-4. Apply: `kubectl apply -k deploy/kubernetes/`
-5. Verify: `kubectl logs -n adc-system deployment/adc | grep migration`
+3. Either replace `deploy/kubernetes/postgres-secret.yaml` with your own Secret
+   (same name: `postgres-secret`) holding the external DB's credentials, or
+   change the `secretRef.name` in `adc-deployment.yaml` to point at an existing
+   Secret in the cluster.
+4. Override `POSTGRES_HOST` in `adc-deployment.yaml` (or via a kustomize
+   overlay): change the env value from the bundled default
+   `postgres.adc-system` to your external DB's hostname.
+5. Apply: `./deploy/kubernetes/install.sh`
+6. Verify: `kubectl logs -n adc-system deployment/adc | grep migration`
 
 ### VM (systemd)
 
@@ -259,16 +267,17 @@ Minimum recommendation: **daily `pg_dump` to off-host storage**.
    ```bash
    sudo ./deploy/systemd/install.sh --external-db
    ```
-   This installs the ADC binary and systemd unit but **skips** PostgreSQL installation.
-2. Edit `/etc/adc/config.toml` — the file was seeded from `config/config.toml.external-db` with `REPLACE-WITH-YOUR-DB-*` placeholders. Fill in the real values.
-3. Restrict file permissions to protect the password:
+   This installs the ADC binary and systemd unit but **skips** PostgreSQL
+   installation. `install.sh` prompts for the external DB's host / port / name /
+   user / password / ssl-mode (or you can pass them as flags — see
+   `install.sh --help`), writes the credentials to `/etc/adc/adc.env`, and
+   patches `/etc/adc/config.toml` so `[catalog.datastore]` resolves to your DB.
+2. (Optional) Verify the patched config:
    ```bash
-   sudo chmod 600 /etc/adc/config.toml
-   sudo chown adc:adc /etc/adc/config.toml
+   sudo cat /etc/adc/config.toml | grep -A8 '\[catalog.datastore\]'
    ```
-4. Start ADC:
+3. `install.sh` has already started the service. Tail logs to confirm:
    ```bash
-   sudo systemctl start adc
    sudo journalctl -u adc -f
    ```
 
@@ -277,10 +286,20 @@ Minimum recommendation: **daily `pg_dump` to off-host storage**.
 1. Use the external variant:
    ```bash
    cd deploy/docker
-   docker compose -f docker-compose.external.yml up -d
+   cp .env.external-db.example .env.external-db
+   # Edit .env.external-db: set POSTGRES_HOST, POSTGRES_DB, POSTGRES_USER,
+   # POSTGRES_PASSWORD to your external DB's coordinates.
+   docker compose -f docker-compose.external-db.yml up -d
    ```
-2. Edit `deploy/docker/config.toml` (mounted into the ADC container) with your DB coordinates.
-3. The external compose file does **not** start a postgres container — only ADC. ADC connects to whatever you set in `config.toml`.
+2. The canonical [`config/config.toml`](../config/config.toml) is bind-mounted
+   into `/etc/adc/config.toml` and its `${POSTGRES_*}` placeholders are
+   expanded against `.env.external-db` at startup. Set `ssl_mode = "require"`
+   in `[catalog.datastore]` for cloud/remote DBs.
+3. The external compose file does **not** start a postgres container — only
+   ADC. ADC connects to whatever `POSTGRES_HOST` resolves to inside the
+   container (see the "`POSTGRES_HOST` gotchas" section in
+   [`deploy/docker/README.md`](../deploy/docker/README.md) if you run into
+   connection issues).
 
 ---
 

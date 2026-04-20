@@ -10,11 +10,15 @@ StartLimitBurst=10
 Type=simple
 User=adc
 Group=adc
+# Deployment-mode vars with bundled-VM defaults. To use external PostgreSQL,
+# set POSTGRES_HOST=your.db.host in /etc/adc/adc.env — EnvironmentFile is
+# processed after Environment=, so file values override these defaults.
+Environment="ADC_MODE=standalone" "POSTGRES_HOST=localhost"
 # Database credentials are loaded from /etc/adc/adc.env so they never appear
 # in the config file. ADC's loader expands ${POSTGRES_USER}, ${POSTGRES_PASSWORD},
-# and ${POSTGRES_DB} references in /etc/adc/config.toml against this environment.
-# The leading "-" makes the file optional — installs that hard-code credentials
-# in config.toml will still work.
+# ${POSTGRES_DB}, and ${POSTGRES_HOST} references in /etc/adc/config.toml
+# against this environment. The leading "-" makes the file optional — installs
+# that hard-code credentials in config.toml will still work.
 EnvironmentFile=-/etc/adc/adc.env
 ExecStart=/usr/local/bin/adc --config /etc/adc/config.toml
 Restart=always

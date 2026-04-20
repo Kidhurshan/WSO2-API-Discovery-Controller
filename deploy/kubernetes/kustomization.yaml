@@ -1,17 +1,33 @@
 # Kustomize configuration for the WSO2 API Discovery Controller (ADC).
 #
 # Deploy with:
-#   kubectl apply -k deploy/kubernetes/
+#   ./deploy/kubernetes/install.sh
+#
+# (`kubectl apply -k` cannot be used directly: kustomize v5 blocks
+# cross-directory file references for security, and the ConfigMap is
+# generated from ../../config/config.toml. install.sh wraps
+# `kubectl kustomize --load-restrictor=LoadRestrictionsNone` and pipes
+# the rendered manifests to `kubectl apply -f -`.)
+#
+# The ConfigMap that ADC mounts at /etc/adc/config.toml is generated from
+# the single canonical config file at ../../config/config.toml — the same
+# file used by the VM and Docker deployments. Edit that one file to change
+# ADC's behavior; re-run ./install.sh and kustomize hashes the new content
+# into the ConfigMap name, triggering a rolling restart of the adc pod.
 #
 # Resource order matters: namespace and RBAC must exist before workloads,
 # and PostgreSQL must be created before ADC so the DB is reachable when
 # ADC starts. Kustomize applies resources in the order listed below.
 #
 # To use external PostgreSQL instead of the bundled instance:
-#   1. Edit adc-configmap.yaml — set [catalog.datastore].host/user/password
-#      to your external DB coordinates
-#   2. Remove the four postgres-* lines from the resources list below
-#   3. kubectl apply -k deploy/kubernetes/
+#   1. Edit ../../config/config.toml — follow the [catalog.datastore]
+#      comments (replace ${POSTGRES_HOST} with your DB hostname or keep it
+#      and override via a kustomize overlay, set ssl_mode = "require").
+#   2. Remove the four postgres-* lines from the resources list below.
+#   3. Set POSTGRES_HOST / POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
+#      to your external DB values (e.g., via a kustomize overlay that
+#      patches adc-deployment.yaml's env/envFrom).
+#   4. ./deploy/kubernetes/install.sh
 # See docs/external-postgres.md for the full external-DB setup guide.
 
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -37,7 +53,15 @@ resources:
   - postgres-deployment.yaml
   - postgres-service.yaml
 
-  # 3. ADC components
-  - adc-configmap.yaml
+  # 3. ADC components (ConfigMap is generated below from config/config.toml)
   - adc-deployment.yaml
   - adc-service.yaml
+
+# Generate the adc-config ConfigMap from the single canonical TOML file.
+# Kustomize appends a content hash to the name (adc-config-<hash>) and
+# rewrites references in adc-deployment.yaml automatically, so edits to
+# config.toml trigger a deterministic rolling restart on next apply.
+configMapGenerator:
+  - name: adc-config
+    files:
+      - config.toml=../../config/config.toml
