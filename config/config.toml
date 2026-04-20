@@ -11,7 +11,7 @@
 #    2. Run the install command for your platform:
 #         VM:         sudo ./deploy/systemd/install.sh
 #         Docker:     cd deploy/docker && docker compose up -d
-#         Kubernetes: kubectl apply -k deploy/kubernetes/
+#         Kubernetes: ./deploy/kubernetes/install.sh
 #
 #  Platform-varying values use ${VAR} env-var interpolation — the install
 #  method supplies them. Do NOT edit the ${VAR} placeholders unless you are
