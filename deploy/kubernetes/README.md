@@ -15,16 +15,22 @@ below.
 
 | File                       | Purpose                                                              |
 |----------------------------|----------------------------------------------------------------------|
-| `kustomization.yaml`       | Kustomize entrypoint — controls resource order and common labels.    |
+| `install.sh`               | Wrapper for `kubectl kustomize | kubectl apply -f -` (required — see below). |
+| `kustomization.yaml`       | Kustomize entrypoint — generates ConfigMap from `../../config/config.toml`. |
 | `adc-namespace.yaml`       | Creates the `adc-system` namespace.                                  |
 | `adc-serviceaccount.yaml`  | ServiceAccount used by the ADC pod.                                  |
 | `postgres-secret.yaml`     | PostgreSQL credentials (`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`). |
 | `postgres-pvc.yaml`        | 20Gi PersistentVolumeClaim for the database files.                   |
 | `postgres-deployment.yaml` | `postgres:17-alpine` Deployment with `Recreate` strategy.            |
 | `postgres-service.yaml`    | ClusterIP Service exposing port 5432 inside the cluster.             |
-| `adc-configmap.yaml`       | ADC `config.toml`, mounted at `/etc/adc/config.toml`.                |
-| `adc-deployment.yaml`      | ADC controller Deployment with health probes.                        |
+| `adc-deployment.yaml`      | ADC controller Deployment with health probes + env vars.             |
 | `adc-service.yaml`         | ClusterIP Service for ADC's health/readiness endpoints (`:8090`).    |
+
+The ADC `config.toml` is **not** in this directory — it's generated on each
+install from the single canonical [`config/config.toml`](../../config/config.toml)
+at the repo root by kustomize's `configMapGenerator`. Edit that one file to
+change ADC's behavior; re-run `install.sh` and kustomize hashes the new
+content into the ConfigMap name, triggering a rolling restart of the adc pod.
 
 ---
 
@@ -38,12 +44,20 @@ make docker
 # For remote clusters: docker push <registry>/wso2/adc:latest and update
 #                      adc-deployment.yaml's image: field.
 
-# 2. Apply everything in the right order.
-kubectl apply -k deploy/kubernetes/
+# 2. Apply everything in the right order (wrapper — see note below).
+./deploy/kubernetes/install.sh
 
 # 3. Watch the pods come up.
 kubectl -n adc-system get pods -w
 ```
+
+> **Why `install.sh`?** Kustomize v5's default security model blocks
+> cross-directory file references, so `kubectl apply -k deploy/kubernetes/`
+> cannot read `config/config.toml` directly. `install.sh` runs
+> `kubectl kustomize --load-restrictor=LoadRestrictionsNone` (the flag is
+> not accepted by `kubectl apply -k`) and pipes the rendered manifests to
+> `kubectl apply -f -`. Use `./install.sh render` to preview without
+> applying, and `./install.sh delete` to tear everything down.
 
 You should see two pods: `postgres-...` and `adc-...`. PostgreSQL becomes ready
 in ~10 seconds; ADC waits for the DB and then runs its schema migrations on
@@ -73,12 +87,13 @@ You should see `adc_schema_version`, `adc_pipeline_state`, `adc_discovered_apis`
 ## Configuration
 
 Out of the box, **all five pipeline phases are disabled**. ADC will start, run
-migrations, and idle until you turn on the phases you want. Edit
-[`adc-configmap.yaml`](adc-configmap.yaml) and re-apply:
+migrations, and idle until you turn on the phases you want. Edit the canonical
+[`config/config.toml`](../../config/config.toml) at the repo root and re-apply:
 
 ```bash
-kubectl apply -k deploy/kubernetes/
-kubectl -n adc-system rollout restart deploy/adc
+./deploy/kubernetes/install.sh
+# The ConfigMap name is content-hashed, so kustomize rewrites the Deployment's
+# configMap.name automatically and the rolling restart happens on its own.
 ```
 
 ### Enabling Phase 1 (Discovery)
@@ -161,30 +176,24 @@ etc.), skip the bundled instance:
 1. **Edit [`kustomization.yaml`](kustomization.yaml)** — remove the four
    `postgres-*.yaml` lines from the `resources` list.
 
-2. **Edit [`adc-configmap.yaml`](adc-configmap.yaml)** — point
-   `[catalog.datastore]` at your DB:
-
-   ```toml
-   [catalog.datastore]
-   type = "postgresql"
-   host = "your-db-host.example.com"
-   port = 5432
-   database = "${POSTGRES_DB}"
-   user = "${POSTGRES_USER}"
-   password = "${POSTGRES_PASSWORD}"
-   max_connections = 20
-   ssl_mode = "require"
-   ```
+2. **Edit [`config/config.toml`](../../config/config.toml)** at the repo
+   root — follow the `[catalog.datastore]` comment block: replace
+   `${POSTGRES_HOST}` with your DB hostname (or override it via a kustomize
+   overlay) and set `ssl_mode = "require"` for cloud/remote DBs.
 
 3. **Replace [`postgres-secret.yaml`](postgres-secret.yaml)** with your own
    Secret named `postgres-secret` containing `POSTGRES_DB`, `POSTGRES_USER`,
    `POSTGRES_PASSWORD` keys — or change the `secretRef.name` in
    `adc-deployment.yaml` to point at your existing Secret.
 
-4. **Apply**:
+4. **Override `POSTGRES_HOST`** in `adc-deployment.yaml` (or via a kustomize
+   overlay) — change the `POSTGRES_HOST` env value from the bundled default
+   `postgres.adc-system` to your external DB's hostname.
+
+5. **Apply**:
 
    ```bash
-   kubectl apply -k deploy/kubernetes/
+   ./deploy/kubernetes/install.sh
    ```
 
 For provisioning, TLS, backups, and cloud-provider notes, see
@@ -222,7 +231,7 @@ K3s, `standard` for kind) or set `storageClassName` explicitly in
 ### Reset everything
 
 ```bash
-kubectl delete -k deploy/kubernetes/
+./deploy/kubernetes/install.sh delete
 # WARNING: this also deletes the PVC and all data.
 ```
 
