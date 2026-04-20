@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"regexp"
+	"sort"
 )
 
 // envVarPattern matches ${IDENTIFIER} where IDENTIFIER is a valid POSIX
@@ -39,4 +40,59 @@ func expandEnvVars(s string) string {
 		// This makes misconfiguration easy to spot in logs and config dumps.
 		return match
 	})
+}
+
+// unexpandedEnvVars returns the distinct, sorted names of ${VAR} placeholders
+// that remain in s after expandEnvVars has run (i.e., env vars that were
+// expected by the config but not set in the environment).
+//
+// TOML comments are stripped before scanning — comments legitimately mention
+// ${VAR} as documentation text (e.g., "Replace ${POSTGRES_HOST} with …") and
+// must not trigger a fail-fast error.
+func unexpandedEnvVars(s string) []string {
+	scrubbed := stripTOMLComments(s)
+	matches := envVarPattern.FindAllStringSubmatch(scrubbed, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(matches))
+	for _, m := range matches {
+		seen[m[1]] = struct{}{}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// stripTOMLComments removes TOML comments (# to end-of-line) from s while
+// preserving # characters that appear inside double-quoted strings. This is
+// not a full TOML parser — it handles the shapes that appear in ADC's config
+// (double-quoted scalar values, no triple-quoted strings, no literal strings
+// with ' which don't contain # in our config).
+func stripTOMLComments(s string) string {
+	var b []byte
+	inString := false
+	escape := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !inString && c == '#' {
+			// Skip to end of line.
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+			if i < len(s) {
+				b = append(b, '\n')
+			}
+			continue
+		}
+		if c == '"' && !escape {
+			inString = !inString
+		}
+		escape = !escape && c == '\\'
+		b = append(b, c)
+	}
+	return string(b)
 }
