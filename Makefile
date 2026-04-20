@@ -81,14 +81,18 @@ uninstall:  ## Uninstall ADC systemd service. Use UNINSTALL_FLAGS="--purge --dro
 	sudo deploy/systemd/uninstall.sh $(UNINSTALL_FLAGS)
 
 # ── Kubernetes ──
+# Uses the install.sh wrapper: kustomize v5 blocks cross-directory file
+# references under its default security model, and the kustomization
+# generates its ConfigMap from ../../config/config.toml. Bare
+# `kubectl apply -k deploy/kubernetes/` fails with a security error.
 
 .PHONY: k8s-apply
 k8s-apply:  ## Apply all K8s manifests via kustomize (bundled postgres)
-	kubectl apply -k deploy/kubernetes/
+	./deploy/kubernetes/install.sh apply
 
 .PHONY: k8s-delete
 k8s-delete:  ## Delete all K8s manifests via kustomize
-	kubectl delete -k deploy/kubernetes/
+	./deploy/kubernetes/install.sh delete
 
 # ── Development ──
 
@@ -99,6 +103,22 @@ run:  ## Run locally with config template
 .PHONY: validate
 validate:  ## Validate config template
 	go run ./cmd/adc/ --config config/config.toml --validate
+
+.PHONY: check-config
+check-config:  ## Fail if stray config.toml files exist outside config/
+	@found=$$(find . -type f \( -name 'config.toml' -o -name 'config.toml.*' -o -name 'config.example.toml' \) \
+	          -not -path './config/config.toml' \
+	          -not -path './.git/*' \
+	          -not -path './node_modules/*' \
+	          -not -path './vendor/*' \
+	          -not -path './bin/*'); \
+	if [ -n "$$found" ]; then \
+	  echo "ERROR: stray config.toml file(s) outside config/ — canonical source drifted:"; \
+	  echo "$$found"; \
+	  echo "Fold the content into config/config.toml or delete the stray file."; \
+	  exit 1; \
+	fi; \
+	echo "OK — config/config.toml is the only config template."
 
 # ── Schema ──
 
